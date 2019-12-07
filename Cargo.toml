@@ -1,0 +1,27 @@
+[package]
+name = "queue"
+description = "A Slack Bot to keep track of people waiting in line for a 3D printer"
+version = "0.1.0"
+authors = ["Joey Territo <jtt9340@rit.edu>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[[bin]]
+name = "verify"
+path = "src/verify.rs"
+
+[[bin]]
+name = "event_handler"
+path = "src/event_handler.rs"
+
+[[example]]
+name = "slack_example"
+path = "src/slack_example.rs"
+
+[dependencies]
+actix = "0.8.3"
+actix-web = "1.0.8"
+serde = "1.0.102"
+serde_json = "1.0.41"
+slack = "0.22.0"
