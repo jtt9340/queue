@@ -4,15 +4,7 @@ use actix_web::{HttpServer, App, web, Responder, HttpResponse};
 use serde::Serialize;
 use serde_json as json;
 
-use std::net::Ipv4Addr;
-
-/// The IP Address we are connecting to
-// const IP_ADDR: [u8; 4] = [213u8, 108, 105, 162];
-const IP_ADDR: Ipv4Addr = Ipv4Addr::LOCALHOST; // Temporarily using localhost
-/// Which port number the host is bound to
-const PORT: u16 = 3152;
-/// The token that is sent to the Slack API when the bot wants to post something
-const BOT_TOKEN: &str = "***REMOVED***";
+mod consts;
 
 // Insert struct definition here that represents what slack sends when it sends
 // a POST request
@@ -30,7 +22,7 @@ fn main() {
 	// In the future, it should be alchemi.dev:3152 (or something)
 	// let socket_addr = SocketAddr::from((IP_ADDR, PORT));
 	// but right now it is localhost:3152
-	let socket_addr = (IP_ADDR, PORT);
+	let socket_addr = (consts::IP_ADDR, consts::PORT);
 	HttpServer::new(|| {
 		App::new()
 			.route("/slack/events", web::post().to(post_handler))
