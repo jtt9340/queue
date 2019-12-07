@@ -4,7 +4,15 @@ use actix_web::{HttpServer, App, web, Responder, HttpResponse};
 use serde::Serialize;
 use serde_json as json;
 
-mod consts;
+use std::env;
+use std::net::Ipv4Addr;
+use std::process;
+
+/// The IP Address we are connecting to
+// const IP_ADDR: [u8; 4] = [213u8, 108, 105, 162];
+const IP_ADDR: Ipv4Addr = Ipv4Addr::LOCALHOST; // Temporarily using localhost
+/// Which port number the host is bound to
+const PORT: u16 = 3152;
 
 // Insert struct definition here that represents what slack sends when it sends
 // a POST request
@@ -18,11 +26,26 @@ struct Response {
 }
 
 fn main() {
+	/* Since the Slack bot API token is senstitive data, we won's store it as a constant that will be
+	comitted to git. While we could store that constant in a file that is .gitignore-ed, it is easier
+	to get that token from the commandline. */
+	let bot_token = match env::args().nth(1) {
+		Some(token) => token,
+		None => {
+			eprintln!("Supply a BOT_TOKEN at the command line");
+			process::exit(-1);
+		}
+	};
+
+	if cfg!(debug_assertions) {
+		println!("{:?}", bot_token);
+	}
+
 	// Which public url to connect to
 	// In the future, it should be alchemi.dev:3152 (or something)
 	// let socket_addr = SocketAddr::from((IP_ADDR, PORT));
 	// but right now it is localhost:3152
-	let socket_addr = (consts::IP_ADDR, consts::PORT);
+	let socket_addr = (IP_ADDR, PORT);
 	HttpServer::new(|| {
 		App::new()
 			.route("/slack/events", web::post().to(post_handler))
