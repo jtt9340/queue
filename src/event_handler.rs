@@ -1,16 +1,15 @@
 //! The main logic of the slack bot. This will eventually be split into separate files.
 
-use actix_web::{HttpServer, App, web, Responder, HttpResponse};
+use std::{env, net::Ipv4Addr, process, sync::Arc};
+
+use actix_web::{App, HttpResponse, HttpServer, Responder, web};
 use serde::Serialize;
 use serde_json as json;
 
-use std::env;
-use std::net::Ipv4Addr;
-use std::process;
-
 /// The IP Address we are connecting to
 // const IP_ADDR: [u8; 4] = [213u8, 108, 105, 162];
-const IP_ADDR: Ipv4Addr = Ipv4Addr::LOCALHOST; // Temporarily using localhost
+const IP_ADDR: Ipv4Addr = Ipv4Addr::LOCALHOST;
+// Temporarily using localhost
 /// Which port number the host is bound to
 const PORT: u16 = 3152;
 
@@ -25,9 +24,16 @@ struct Response {
 	channel: String,
 }
 
+/// The data that all HTTP request handlers need access to
+#[derive(Debug)]
+struct AppState {
+	bot_token: String,
+	session: reqwest::Client,
+}
+
 fn main() {
-	/* Since the Slack bot API token is senstitive data, we won's store it as a constant that will be
-	comitted to git. While we could store that constant in a file that is .gitignore-ed, it is easier
+	/* Since the Slack bot API token is sensitive data, we won't store it as a constant that will be
+	committed to git. While we could store that constant in a file that is .gitignore-ed, it is easier
 	to get that token from the commandline. */
 	let bot_token = match env::args().nth(1) {
 		Some(token) => token,
@@ -37,34 +43,88 @@ fn main() {
 		}
 	};
 
-	if cfg!(debug_assertions) {
-		println!("{:?}", bot_token);
-	}
+	println!("{:?}", bot_token);
 
 	// Which public url to connect to
 	// In the future, it should be alchemi.dev:3152 (or something)
 	// let socket_addr = SocketAddr::from((IP_ADDR, PORT));
 	// but right now it is localhost:3152
+	// TODO: Upgrade this to actix-web 2.0.0?
 	let socket_addr = (IP_ADDR, PORT);
-	HttpServer::new(|| {
+	HttpServer::new(move || {
 		App::new()
+			.data(AppState {
+				bot_token: bot_token.clone(),
+				session: reqwest::Client::new(),
+			})
 			.route("/slack/events", web::post().to(post_handler))
 	})
 		.bind(socket_addr)
-		.expect("Cannot bind to port 8000")
+		.expect(format!("Cannot bind to port {}", PORT).as_str())
 		.run()
 		.expect("Failed to run event handler web server")
 	;
 }
 
-fn post_handler(web::Json(payload): web::Json<json::Value>) -> impl Responder {
-	println!("{:#?}", payload);
-	// actix::spawn(send_request());
+fn post_handler((web::Json(json_payload), app_state): (web::Json<json::Value>, web::Data<AppState>)) -> impl Responder {
+	println!("{:#?}", json_payload);
+	actix::spawn(send_request(json_payload, app_state.into_inner()));
 	HttpResponse::Ok()
 }
 
-/*
-async fn send_request() -> Result<(), ()> {
-	// Use reqwest to make a POST request
-	Ok(())
-}*/
+async fn send_request(payload: json::Value, app_state: Arc<AppState>) {
+	// Did somebody @ the app?
+	let is_app_mention = payload
+		.pointer("/event/type")
+		.map(json::Value::as_str)
+		.flatten()
+		.map(|e| e == "app_mention")
+		.unwrap_or(false)
+		;
+
+	if is_app_mention {
+		// Did the user ask for the Slack bot to tell him or her a joke?
+		let wants_a_joke = payload
+			.pointer("/event/text")
+			.map(json::Value::as_str)
+			.flatten()
+			.map(|t| t.contains("tell me a joke"))
+			.unwrap_or(false)
+			;
+
+		if wants_a_joke {
+			/*
+				Use reqwest to make a POST request to chat.postMessage using bot's token
+				Text: Hello {user}! Knock, knock.
+				Channel: {channel}
+
+				where user = /event/user
+				and channel = /event/channel
+			*/
+			let user = payload
+				.pointer("/event/user")
+				.map(json::Value::as_str)
+				.flatten()
+				.unwrap()
+				;
+			let chan = payload
+				.pointer("/event/channel")
+				.map(json::Value::as_str)
+				.flatten()
+				.unwrap()
+				;
+
+			let _ = app_state
+				.session
+				.post("https://slack.com/api/chat.postMessage")
+				.bearer_auth(app_state.bot_token.clone())
+				.json(&Response {
+					text: format!("Hello <@{}>! Knock, knock.", user),
+					channel: chan.to_string(),
+				})
+				.send()
+				.expect("Failed sending a POST request to chat.postMessage")
+				;
+		}
+	}
+}

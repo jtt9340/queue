@@ -2,13 +2,13 @@
 //! server, this needs to be run every time before working on Queue in order to validate the URL that
 //! ngrok randomly generates each session.
 //!
-//! Run ngrok with: `ngrok http PORT` (see PORT below
-
-use actix_web::{HttpServer, App, web, Responder, HttpResponse};
-use serde::Deserialize;
+//! Run ngrok with: `ngrok http PORT` (see PORT below)
 
 // use std::net::SocketAddr;
 use std::net::Ipv4Addr;
+
+use actix_web::{App, HttpResponse, HttpServer, Responder, web};
+use serde::Deserialize;
 
 /// The IP address we are connecting to
 // const IP_ADDR: [u8; 4] = [213u8, 108, 105, 162];
