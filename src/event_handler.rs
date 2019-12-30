@@ -1,6 +1,6 @@
 //! The main logic of the slack bot. This will eventually be split into separate files.
 
-use std::{env, net::Ipv4Addr, process, sync::Arc};
+use std::{env, io, net::Ipv4Addr, process, sync::Arc};
 
 use actix_web::{App, HttpResponse, HttpServer, Responder, web};
 use serde::Serialize;
@@ -31,7 +31,8 @@ struct AppState {
 	session: reqwest::Client,
 }
 
-fn main() {
+#[actix_rt::main]
+async fn main() -> io::Result<()> {
 	/* Since the Slack bot API token is sensitive data, we won't store it as a constant that will be
 	committed to git. While we could store that constant in a file that is .gitignore-ed, it is easier
 	to get that token from the commandline. */
@@ -59,14 +60,12 @@ fn main() {
 			})
 			.route("/slack/events", web::post().to(post_handler))
 	})
-		.bind(socket_addr)
-		.expect(format!("Cannot bind to port {}", PORT).as_str())
+		.bind(socket_addr)?
 		.run()
-		.expect("Failed to run event handler web server")
-	;
+		.await
 }
 
-fn post_handler((web::Json(json_payload), app_state): (web::Json<json::Value>, web::Data<AppState>)) -> impl Responder {
+async fn post_handler((web::Json(json_payload), app_state): (web::Json<json::Value>, web::Data<AppState>)) -> impl Responder {
 	println!("{:#?}", json_payload);
 	actix::spawn(send_request(json_payload, app_state.into_inner()));
 	HttpResponse::Ok()
