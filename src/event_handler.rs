@@ -12,6 +12,8 @@ const IP_ADDR: Ipv4Addr = Ipv4Addr::LOCALHOST;
 // Temporarily using localhost
 /// Which port number the host is bound to
 const PORT: u16 = 3152;
+/// The URL to make a POST request to in order to post in the chat
+const CHAT_POSTMESSAGE: &str = "https://slack.com/api/chat.postMessage";
 
 // Insert struct definition here that represents what slack sends when it sends
 // a POST request
@@ -44,13 +46,12 @@ async fn main() -> io::Result<()> {
 		}
 	};
 
-	println!("{:?}", bot_token);
+	println!("{}", bot_token);
 
 	// Which public url to connect to
 	// In the future, it should be alchemi.dev:3152 (or something)
 	// let socket_addr = SocketAddr::from((IP_ADDR, PORT));
 	// but right now it is localhost:3152
-	// TODO: Upgrade this to actix-web 2.0.0?
 	let socket_addr = (IP_ADDR, PORT);
 	HttpServer::new(move || {
 		App::new()
@@ -75,20 +76,16 @@ async fn send_request(payload: json::Value, app_state: Arc<AppState>) {
 	// Did somebody @ the app?
 	let is_app_mention = payload
 		.pointer("/event/type")
-		.map(json::Value::as_str)
-		.flatten()
-		.map(|e| e == "app_mention")
-		.unwrap_or(false)
+		.and_then(json::Value::as_str)
+		.map_or(false, |e| e == "app_mention")
 		;
 
 	if is_app_mention {
 		// Did the user ask for the Slack bot to tell him or her a joke?
 		let wants_a_joke = payload
 			.pointer("/event/text")
-			.map(json::Value::as_str)
-			.flatten()
-			.map(|t| t.contains("tell me a joke"))
-			.unwrap_or(false)
+			.and_then(json::Value::as_str)
+			.map_or(false, |t| t.contains("tell me a joke"))
 			;
 
 		if wants_a_joke {
@@ -100,25 +97,71 @@ async fn send_request(payload: json::Value, app_state: Arc<AppState>) {
 				where user = /event/user
 				and channel = /event/channel
 			*/
+			// The Slack user who posted a message
 			let user = payload
 				.pointer("/event/user")
-				.map(json::Value::as_str)
-				.flatten()
+				.and_then(json::Value::as_str)
 				.unwrap()
 				;
+
+			// The channel that the message was posted in
 			let chan = payload
 				.pointer("/event/channel")
-				.map(json::Value::as_str)
-				.flatten()
+				.and_then(json::Value::as_str)
 				.unwrap()
 				;
 
 			let _ = app_state
 				.session
-				.post("https://slack.com/api/chat.postMessage")
+				.post(CHAT_POSTMESSAGE)
 				.bearer_auth(app_state.bot_token.clone())
 				.json(&Response {
 					text: format!("Hello <@{}>! Knock, knock.", user),
+					channel: chan.to_string(),
+				})
+				.send()
+				.expect("Failed sending a POST request to chat.postMessage")
+				;
+		}
+	}
+	// Continue the knock-knock joke
+	let is_message = payload
+		.pointer("/event/type")
+		.and_then(json::Value::as_str)
+		.map_or(false, |e| e == "message")
+		;
+
+	if is_message {
+		let payload_event_text = payload
+			.pointer("/event/text")
+			.and_then(json::Value::as_str)
+			;
+		// What to respond with
+		let response_text =
+			if payload_event_text.map_or(false, |t| t.contains("Who’s there?")) {
+				Some("Underwear")
+			} else if payload_event_text.map_or(false, |t| t.contains("Underwear who?")) {
+				Some("Ever underwear you're going?")
+			} else {
+				None
+			};
+		// Make call to chat.postMessage sending response_text using bot's token
+		if let Some(response) = response_text {
+			/* What channel to respond to
+			   TODO: this is repeated code from above, make this entire function
+				   more succinct and more DRY */
+			let chan = payload
+				.pointer("/event/channel")
+				.and_then(json::Value::as_str)
+				.unwrap()
+				;
+
+			let _ = app_state
+				.session
+				.post(CHAT_POSTMESSAGE)
+				.bearer_auth(app_state.bot_token.clone())
+				.json(&Response {
+					text: response.to_string(),
 					channel: chan.to_string(),
 				})
 				.send()
