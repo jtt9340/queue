@@ -10,15 +10,24 @@ publish = false
 
 [[bin]]
 name = "verify"
-path = "src/verify.rs"
+path = "src/bin/verify.rs"
 
 [[bin]]
-name = "event_handler"
-path = "src/event_handler.rs"
+name = "main"
+path = "src/main.rs"
+
+[lib]
+name = "queue"
+path = "src/queue.rs"
+test = true
 
 [[example]]
 name = "slack_example"
-path = "src/slack_example.rs"
+path = "src/examples/slack_example.rs"
+
+[[example]]
+name = "actix_example"
+path = "src/examples/actix_example.rs"
 
 [dependencies]
 actix = "0.9.0"

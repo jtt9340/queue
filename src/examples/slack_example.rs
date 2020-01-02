@@ -16,7 +16,7 @@
 //! ```
 //! Queue: Underwear
 //! ```
-//! The user's reponse to this should be:
+//! The user's response to this should be:
 //! ```
 //! Johnny Appleseed: Underwear who?
 //! ```
@@ -28,17 +28,11 @@
 //! ```
 //! I don't know how to respond.
 //! ```
-//! This get's annoying fast, especially since there is a bug in this file where the slack bot *only*
-//! responds with the last line, i.e. `I don't know how to respond`. I originally used the slack crate
-//! because the method of using [actix-web] to handle the POST requests that the slack API uses wasn't
-//! working, but that was due to the fact that Queue wasn't installed into a channel. Now that the
-//! actix-web POST request-handling method works, the attempt at using the slack crate has been abandoned.
+//! This get's annoying fast, as any other post yields "I don't know how to respond" from the Slack bot.
 //!
 //! [slack crate]: https://crates.io/crates/slack
-//! [actix-web]: https://actix.rs
 
-use slack;
-use slack::{Event, RtmClient, Message};
+use slack::{self, Event, Message, RtmClient};
 
 /*
 Knock, knock.
@@ -63,7 +57,7 @@ impl slack::EventHandler for MyHandler {
 					Message::Standard(ref ms) if ms.text.is_some() => {
 						let text = ms.text.as_ref().unwrap();
 						println!("{}", text);
-						if text.contains("Who's there?") {
+						if text.contains("Who’s there?") {
 							("Underwear", ms.channel.as_ref())
 						} else if text.contains("Underwear who?") {
 							("Ever underwear you're going? 🤔", ms.channel.as_ref())

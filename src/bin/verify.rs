@@ -5,7 +5,7 @@
 //! Run ngrok with: `ngrok http PORT` (see PORT below)
 
 // use std::net::SocketAddr;
-use std::net::Ipv4Addr;
+use std::{io, net::Ipv4Addr};
 
 use actix_web::{App, HttpResponse, HttpServer, Responder, web};
 use serde::Deserialize;
@@ -22,7 +22,8 @@ struct Payload {
     r#type: String,
 }
 
-fn main() {
+#[actix_rt::main]
+async fn main() -> io::Result<()> {
     // Which public url to connect to
     // In the future, it should be alchemi.dev:3152 (or something else)
     // let socket_addr = SocketAddr::from((IP_ADDR, PORT));
@@ -33,14 +34,12 @@ fn main() {
         App::new()
             .route("/slack/events", web::post().to(post_handler))
     })
-        .bind(socket_addr)
-        .expect(format!("Could not bind to port {}", PORT).as_ref())
+        .bind(socket_addr)?
         .run()
-        .expect("Failed to run event listener web server")
-    ;
+        .await
 }
 
-fn post_handler(web::Json(response): web::Json<Payload>) -> impl Responder {
+async fn post_handler(web::Json(response): web::Json<Payload>) -> impl Responder {
     println!("{:?}", response);
     HttpResponse::Ok().body(response.challenge)
 }
