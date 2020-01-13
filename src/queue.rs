@@ -1,4 +1,8 @@
-use std::collections::VecDeque;
+use std::{
+	collections::VecDeque,
+	convert::From,
+	iter::Extend,
+};
 
 /// A user of Slack, i.e. someone who will wait in line for an event.
 ///
@@ -35,6 +39,15 @@ impl Queue {
 		self.0.pop_front()
 	}
 
+	/// Retrieve the person who is at the front if the line, if they exist. This does **not** remove
+	/// the person, only retrieves them.
+	///
+	/// Returns `None` if the queue is empty. Else returns `Some(user)` where `user` is the user at
+	/// the front of the line.
+	pub(in crate) fn peek_first_user_in_line(&self) -> Option<&User> {
+		self.0.get(0)
+	}
+
 	/// Remove the particular user in the queue, e.g. if they no longer want to wait in line.
 	///
 	/// Returns `true` if the user was removed, `false` if the user wasn't, i.e. the user wasn't in
@@ -50,6 +63,24 @@ impl Queue {
 			}
 		}
 		false
+	}
+}
+
+impl Extend<User> for Queue {
+	fn extend<T>(&mut self, iter: T) where T: IntoIterator<Item=User> {
+		self.0.extend(iter);
+	}
+}
+
+impl From<VecDeque<User>> for Queue {
+	fn from(vec_deque: VecDeque<User>) -> Self {
+		Self(vec_deque)
+	}
+}
+
+impl From<Vec<User>> for Queue {
+	fn from(vec: Vec<User>) -> Self {
+		Self(VecDeque::from(vec))
 	}
 }
 
@@ -104,6 +135,19 @@ mod tests {
 	}
 
 	#[test]
+	fn peek_front_users() {
+		let mut queue = Queue::new();
+
+		queue.add_user(User(String::from("UA8RXUPSP")));
+		queue.add_user(User(String::from("UNB2LMZRP")));
+		queue.add_user(User(String::from("UN480W9ND")));
+
+		assert_eq!(queue.peek_first_user_in_line(), Some(&User(String::from("UA8RXUPSP"))));
+		// Does not mutate the queue itself
+		assert_eq!(queue.0, [User(String::from("UA8RXUPSP")), User(String::from("UNB2LMZRP")), User(String::from("UN480W9ND"))]);
+	}
+
+	#[test]
 	fn remove_arbitrary_users() {
 		let mut queue = Queue::new();
 
@@ -127,5 +171,40 @@ mod tests {
 
 		queue.remove_first_user_in_line();
 		assert!(!queue.remove_user(User(String::from("UA8RXUPSP"))));
+	}
+
+	#[test]
+	fn extend_queue() {
+		let mut queue = Queue::new();
+
+		queue.extend(vec![
+			User(String::from("UA8RXUPSP")),
+			User(String::from("UNB2LMZRP")),
+			User(String::from("UN480W9ND")),
+		]);
+
+		assert_eq!(queue.0, [User(String::from("UA8RXUPSP")), User(String::from("UNB2LMZRP")), User(String::from("UN480W9ND"))]);
+	}
+
+	#[test]
+	fn from_vec_deque() {
+		let mut vec_deque = VecDeque::new();
+		vec_deque.push_back(User(String::from("UA8RXUPSP")));
+		vec_deque.push_back(User(String::from("UNB2LMZRP")));
+		vec_deque.push_back(User(String::from("UN480W9ND")));
+
+		let queue = Queue::from(vec_deque);
+		assert_eq!(queue.0, [User(String::from("UA8RXUPSP")), User(String::from("UNB2LMZRP")), User(String::from("UN480W9ND"))]);
+	}
+
+	#[test]
+	fn from_vec() {
+		let queue = Queue::from(vec![
+			User(String::from("UA8RXUPSP")),
+			User(String::from("UNB2LMZRP")),
+			User(String::from("UN480W9ND")),
+		]);
+
+		assert_eq!(queue.0, [User(String::from("UA8RXUPSP")), User(String::from("UNB2LMZRP")), User(String::from("UN480W9ND"))]);
 	}
 }
