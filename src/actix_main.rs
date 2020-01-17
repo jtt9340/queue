@@ -6,6 +6,8 @@ use actix_web::{App, HttpResponse, HttpServer, Responder, web};
 use serde::Serialize;
 use serde_json as json;
 
+mod queue;
+
 /// The IP Address we are connecting to
 // const IP_ADDR: [u8; 4] = [213u8, 108, 105, 162];
 // Temporarily using localhost
@@ -28,6 +30,9 @@ struct Response {
 struct AppState {
 	bot_token: String,
 	session: reqwest::Client,
+	// TODO: AppState is implicitly wrapped in an Arc which only provides an immutable reference to
+	//   the underlying data, so we need to figure out how to mutate *just* the queue::Queue
+	queue: queue::Queue,
 }
 
 #[actix_rt::main]
@@ -55,6 +60,7 @@ async fn main() -> io::Result<()> {
 			.data(AppState {
 				bot_token: bot_token.clone(),
 				session: reqwest::Client::new(),
+				queue: queue::Queue::new(),
 			})
 			.route("/slack/events", web::post().to(post_handler))
 	})
@@ -94,12 +100,25 @@ async fn send_request(payload: json::Value, app_state: Arc<AppState>) {
 		;
 
 	if is_app_mention {
+		// The content of the message the user posted
+		let text = payload
+			.pointer("/event/text")
+			.and_then(json::Value::as_str)
+			.unwrap_or_default()
+			;
+
 		// The Slack user who posted a message
 		let user = payload
 			.pointer("/event/user")
 			.and_then(json::Value::as_str)
 			.unwrap()
 			;
+
+		let response = determine_response(
+			queue::User(String::from(user)),
+			text,
+			&mut app_state.queue
+		);
 
 		// The channel that the message was posted in
 		let chan = payload
@@ -113,11 +132,51 @@ async fn send_request(payload: json::Value, app_state: Arc<AppState>) {
 			.post(CHAT_POSTMESSAGE)
 			.bearer_auth(app_state.bot_token.clone())
 			.json(&Response {
-				text: format!("Hello <@{}>! I will say this every time you @ me.", user),
+				text: response,
 				channel: chan.to_string(),
 			})
 			.send()
 			.expect("Failed sending a POST request to chat.postMessage")
 			;
+	}
+}
+
+/// Given the text of what someone posted when "at-ing" Queue, determine how to modify the queue and
+/// what to say back.
+///
+/// Parameter `user` is the user (a string of the format UXXXXXXXX) who said `body`. `queue` is the
+/// `Queue` of `User`s that mutated after calling this function
+/// Currently, this function has the side-effect of mutating the state of the queue passed in
+fn determine_response(user: queue::User, body: &str, queue: &mut queue::Queue) -> String {
+	match body.to_lowercase().as_str() {
+		"add" => {
+			if queue.add_user(user) {
+				format!("Okay <@{}>, I have added you to the queue", user.0)
+			} else {
+				String::from("You are already in the queue")
+			}
+		},
+		"cancel" => {
+			if queue.remove_user(user) {
+				format!("Okay <@{}>, I have removed you from the queue", user.0)
+			} else {
+				String::from("You weren't in the queue to begin with")
+			}
+		},
+		"done" => {
+			if queue
+				.peek_first_user_in_line()
+				.map_or(false, |u| *u == user)
+			{
+				/* It *should* be safe to unwrap() here because the condition ensures there is a
+				first user in line in the first place */
+				let user = queue.remove_first_user_in_line().unwrap();
+				format!("Okay <@{}>, you have been removed from the front of the queue", user.0)
+			} else {
+				String::from("You cannot be done; you are not at the front of the line")
+			}
+		},
+		"show" => format!("{:?}", queue),
+		_ => String::from("unrecognized command. Your options are: add, cancel, done, and show")
 	}
 }

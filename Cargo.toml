@@ -13,8 +13,12 @@ name = "verify"
 path = "src/bin/verify.rs"
 
 [[bin]]
-name = "main"
-path = "src/main.rs"
+name = "actix_main"
+path = "src/actix_main.rs"
+
+[[bin]]
+name = "slack_main"
+path = "src/slack_main.rs"
 
 [lib]
 name = "queue"

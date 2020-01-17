@@ -4,6 +4,9 @@ use std::{
 	iter::Extend,
 };
 
+/// The User ID (a string of the form UXXXXXXX) for the Queue app
+pub const QUEUE_UID: &str = "<@UQMDZF97S>";
+
 /// A user of Slack, i.e. someone who will wait in line for an event.
 ///
 /// This type simply wraps a string of the format UXXXXXXXX which represents the ID of a Slack user.
@@ -63,6 +66,50 @@ impl Queue {
 			}
 		}
 		false
+	}
+
+	/// Given the `body` of what `user` posted when mentioning Queue, determine what to say back.
+	///
+	/// Currently, this function takes a **mutable reference** to `self` and has the side-effect of
+	/// mutating `self`. In the future, it might return another value indicating how to mutate queue
+	/// after invocation of this method.
+	pub fn determine_response(&mut self, user: User, body: &str) -> String {
+		let lowercase_queue_id = QUEUE_UID.to_lowercase();
+		let lowercase_queue_id = lowercase_queue_id.trim_matches(|c| c == '<' || c == '>');
+		println!("{}", lowercase_queue_id);
+		match body
+			.to_lowercase()
+			.trim_start_matches(lowercase_queue_id) {
+			"add" => {
+				if self.add_user(user.clone()) {
+					format!("Okay <@{}>, I have added you to the queue", user.0)
+				} else {
+					String::from("You are already in the queue")
+				}
+			},
+			"cancel" => {
+				if self.remove_user(user.clone()) {
+					format!("Okay <@{}>, I have removed you from the queue", user.0)
+				} else {
+					String::from("You weren't in the queue to begin with")
+				}
+			},
+			"done" => {
+				if self
+					.peek_first_user_in_line()
+					.map_or(false, |u| *u == user)
+				{
+					/* It *should* be safe to unwrap() here because the condition ensures there is a
+					first user in line in the first place */
+					let user = self.remove_first_user_in_line().unwrap();
+					format!("Okay <@{}>, you have been removed from the front of the queue", user.0)
+				} else {
+					String::from("You cannot be done; you are not at the front of the line")
+				}
+			},
+			"show" => format!("{:?}", self),
+			s => format!("unrecognized command {}. Your options are: add, cancel, done, and show", s)
+		}
 	}
 }
 
