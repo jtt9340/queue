@@ -3,6 +3,10 @@ use slack::{self, RtmClient};
 
 mod queue;
 
+/// Sometimes we need these.
+pub const INSPIRATIONAL_QUOTE: &str =
+	"_Waiting in line is a great opportunity to meet people, daydream, or play._\n\t\u{2014}Patch Adams";
+
 /// Given the body of a post to Slack, determine someone mentioned the Queue app
 fn is_app_mention(text: &str) -> bool {
 	text.contains(queue::QUEUE_UID)
@@ -55,7 +59,7 @@ impl slack::EventHandler for queue::Queue {
 			.and_then(|chan| chan.id.as_ref())
 			.expect("channel botspam not found")
 		;
-		let _ = cli.sender().send_message(&botspam_chan_id, "I\'m baaack!");
+		let _ = cli.sender().send_message(&botspam_chan_id, INSPIRATIONAL_QUOTE);
 	}
 }
 

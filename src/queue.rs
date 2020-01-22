@@ -56,7 +56,7 @@ impl Queue {
 	/// Returns `true` if the user was removed, `false` if the user wasn't, i.e. the user wasn't in
 	/// queue to begin with.
 	pub fn remove_user(&mut self, user: User) -> bool {
-		// TODO: this is kinda a naive implementation, perhaps a better implementation is in order?
+		// FIXME: this is kinda a naive implementation, perhaps a better implementation is in order?
 		for idx in 0..self.0.len() {
 			if self.0[idx] == user {
 				self.0.remove(idx);
@@ -74,27 +74,33 @@ impl Queue {
 	/// mutating `self`. In the future, it might return another value indicating how to mutate queue
 	/// after invocation of this method.
 	pub fn determine_response(&mut self, user: User, body: &str) -> String {
+		/*
+			Commands are only activated when the body has an @Queue. But we need to strip the command
+			of its @Queue mention before seeing what the user wants Queue to do.
+		*/
 		let lowercase_queue_id = QUEUE_UID.to_lowercase();
-		let lowercase_queue_id = lowercase_queue_id.trim_matches(|c| c == '<' || c == '>');
-		println!("{}", lowercase_queue_id);
-		match body
-			.to_lowercase()
-			.trim_start_matches(lowercase_queue_id) {
+		let body = body.to_lowercase();
+		let body = body.trim_start_matches(lowercase_queue_id.as_str());
+		
+		match body.trim() {
+			// TODO: Move each of these into their own method
 			"add" => {
 				if self.add_user(user.clone()) {
 					format!("Okay <@{}>, I have added you to the queue", user.0)
 				} else {
-					String::from("You are already in the queue")
+					String::from("You are already in the queue!")
 				}
 			},
 			"cancel" => {
+				// TODO: Prevent user from cancelling if they are at the front of the line
 				if self.remove_user(user.clone()) {
 					format!("Okay <@{}>, I have removed you from the queue", user.0)
 				} else {
-					String::from("You weren't in the queue to begin with")
+					String::from("You weren't in the queue to begin with!")
 				}
 			},
 			"done" => {
+				// TODO: Notify user when they are next in line
 				if self
 					.peek_first_user_in_line()
 					.map_or(false, |u| *u == user)
@@ -102,13 +108,13 @@ impl Queue {
 					/* It *should* be safe to unwrap() here because the condition ensures there is a
 					first user in line in the first place */
 					let user = self.remove_first_user_in_line().unwrap();
-					format!("Okay <@{}>, you have been removed from the front of the queue", user.0)
+					format!("Okay <@{}>, you have been removed from the front of the queue.", user.0)
 				} else {
-					String::from("You cannot be done; you are not at the front of the line")
+					String::from("You cannot be done; you are not at the front of the line!")
 				}
 			},
-			"show" => format!("{:?}", self),
-			s => format!("unrecognized command {}. Your options are: add, cancel, done, and show", s)
+			"show" => /* TODO: Use user names instead of User IDs */ format!("{:?}", self),
+			s => format!("Unrecognized command {}. Your options are: add, cancel, done, and show", s)
 		}
 	}
 }
