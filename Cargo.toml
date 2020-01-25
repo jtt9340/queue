@@ -40,4 +40,4 @@ actix-rt = "1.0.0"
 reqwest = "0.9.24"
 serde = "1.0.102"
 serde_json = "1.0.41"
-slack = { version = "0.22.0", optional = true }
+slack = "0.22.0"

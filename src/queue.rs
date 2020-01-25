@@ -1,17 +1,11 @@
 use std::{
 	collections::VecDeque,
 	convert::From,
+	fmt,
 	iter::Extend,
 };
 
-/// The User ID (a string of the form UXXXXXXX) for the Queue app
-pub const QUEUE_UID: &str = "<@UQMDZF97S>";
 
-/// A user of Slack, i.e. someone who will wait in line for an event.
-///
-/// This type simply wraps a string of the format UXXXXXXXX which represents the ID of a Slack user.
-#[derive(Eq, PartialEq, Clone, Debug)]
-pub struct User(pub String);
 
 /// The main data structure for keeping track of Slack users for an event.
 #[derive(Debug)]
@@ -94,7 +88,7 @@ impl Queue {
 			"cancel" => {
 				// TODO: Prevent user from cancelling if they are at the front of the line
 				if self.remove_user(user.clone()) {
-					format!("Okay <@{}>, I have removed you from the queue", user.0)
+					format!("Okay <@{}>, I have removed you from the queue.", user.0)
 				} else {
 					String::from("You weren't in the queue to begin with!")
 				}
@@ -113,7 +107,7 @@ impl Queue {
 					String::from("You cannot be done; you are not at the front of the line!")
 				}
 			},
-			"show" => /* TODO: Use user names instead of User IDs */ format!("{:?}", self),
+			"show" => /* TODO: Use user names instead of User IDs */ format!("{}", self),
 			s => format!("Unrecognized command {}. Your options are: add, cancel, done, and show", s)
 		}
 	}
@@ -134,6 +128,17 @@ impl From<VecDeque<User>> for Queue {
 impl From<Vec<User>> for Queue {
 	fn from(vec: Vec<User>) -> Self {
 		Self(VecDeque::from(vec))
+	}
+}
+
+impl fmt::Display for Queue {
+	fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+		write!(f, "Here are the people currently in line:\n{}", self
+			.0
+			.iter()
+			.map(|u| format!("• <@{}>\n", u.0))
+			.fold(String::default(), |acc, line| acc.to_owned() + &line)
+		)
 	}
 }
 
