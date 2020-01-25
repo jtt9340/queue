@@ -13,12 +13,8 @@ name = "verify"
 path = "src/bin/verify.rs"
 
 [[bin]]
-name = "actix_main"
-path = "src/actix_main.rs"
-
-[[bin]]
 name = "slack_main"
-path = "src/slack_main.rs"
+path = "src/main.rs"
 
 [lib]
 name = "queue"
@@ -27,11 +23,7 @@ test = true
 
 [[example]]
 name = "slack_example"
-path = "src/examples/slack_example.rs"
-
-[[example]]
-name = "actix_example"
-path = "src/examples/actix_example.rs"
+path = "src/examples/example.rs"
 
 [dependencies]
 actix = "0.9.0"
