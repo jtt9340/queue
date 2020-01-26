@@ -4,8 +4,10 @@ use std::{
 	fmt,
 	iter::Extend,
 };
-use crate::user::User;
+
 use slack::RtmClient;
+
+use crate::user::User;
 
 /// The User ID (a string of the form UXXXXXXX) for the Queue app
 pub const QUEUE_UID: &str = "<@UQMDZF97S>";
@@ -42,10 +44,40 @@ impl Queue {
 		}
 	}
 
+	/// Handle the add command. Returns a message to post in the Slack channel depending on whether
+	/// or not the user was actually added.
+	fn add(&mut self, user: User) -> String {
+		if self.add_user(user.clone()) {
+			format!("Okay <@{}>, I have added you to the queue", user.0)
+		} else {
+			String::from("You are already in the queue!")
+		}
+	}
+
 	/// Remove the person who is next in line for an event. Returns `None` if there is no such user,
 	/// i.e. the queue is empty.
 	pub fn remove_first_user_in_line(&mut self) -> Option<User> {
 		self.0.pop_front()
+	}
+
+	/// Handle the done command. Returns a message to post in the Slack channel depending on whether
+	/// or not the user was removed.
+	fn done(&mut self, user: User) -> String {
+		if self
+			.peek_first_user_in_line()
+			.map_or(false, |u| *u == user)
+		{
+			/* It *should* be safe to unwrap() here because the condition ensures there is a
+			first user in line in the first place */
+			let user = self.remove_first_user_in_line().unwrap();
+			let mut response = format!("Okay <@{}>, you have been removed from the front of the queue.", user.0);
+			if let Some(next) = self.peek_first_user_in_line() {
+				response.push_str(format!("Hey <@{}>! You're next in line!", next.0).as_str());
+			}
+			response
+		} else {
+			String::from("You cannot be done; you are not at the front of the line!")
+		}
 	}
 
 	/// Retrieve the person who is at the front if the line, if they exist. This does **not** remove
@@ -74,6 +106,21 @@ impl Queue {
 		false
 	}
 
+	/// Handle the cancel command. The cancel command will remove someone from the queue regardless
+	/// of their position. The parameter `notify_next` is used to specify if the person behind the
+	/// `user` who just left should be notified of this event. The string returned is the message to
+	/// post in the Slack chat.
+	fn cancel(&mut self, user: User) -> String {
+		if user == *self.peek_first_user_in_line().unwrap_or(&User(QUEUE_UID.to_string())) {
+			String::from("Use the done command to leave the queue. The difference \
+			between cancel and done is that done will notify the next user in line.")
+		} else if self.remove_user(user.clone()) {
+			format!("Okay <@{}>, I have removed you from the queue.", user.0)
+		} else {
+			String::from("You weren't in the queue to begin with!")
+		}
+	}
+
 	/// Given the `body` of what `user` posted when mentioning Queue, determine what to say back.
 	///
 	/// Currently, this function takes a **mutable reference** to `self` and has the side-effect of
@@ -89,36 +136,9 @@ impl Queue {
 		let body = body.trim_start_matches(lowercase_queue_id.as_str());
 		
 		match body.trim() {
-			// TODO: Move each of these into their own method
-			"add" => {
-				if self.add_user(user.clone()) {
-					format!("Okay <@{}>, I have added you to the queue", user.0)
-				} else {
-					String::from("You are already in the queue!")
-				}
-			},
-			"cancel" => {
-				// TODO: Prevent user from cancelling if they are at the front of the line
-				if self.remove_user(user.clone()) {
-					format!("Okay <@{}>, I have removed you from the queue.", user.0)
-				} else {
-					String::from("You weren't in the queue to begin with!")
-				}
-			},
-			"done" => {
-				// TODO: Notify user when they are next in line
-				if self
-					.peek_first_user_in_line()
-					.map_or(false, |u| *u == user)
-				{
-					/* It *should* be safe to unwrap() here because the condition ensures there is a
-					first user in line in the first place */
-					let user = self.remove_first_user_in_line().unwrap();
-					format!("Okay <@{}>, you have been removed from the front of the queue.", user.0)
-				} else {
-					String::from("You cannot be done; you are not at the front of the line!")
-				}
-			},
+			"add" => self.add(user),
+			"cancel" => self.cancel(user),
+			"done" => self.done(user),
 			"show" => /* TODO: Current implementation will mention users */ format!("{}", self),
 			s => format!("Unrecognized command {}. Your options are: add, cancel, done, and show", s)
 		}
@@ -156,7 +176,7 @@ impl slack::EventHandler for Queue {
 	}
 
 	fn on_connect(&mut self, cli: &RtmClient) {
-		println!("on_connect");
+		println!("{}", INSPIRATIONAL_QUOTE);
 		let botspam_chan_id = cli
 			.start_response()
 			.channels
