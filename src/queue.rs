@@ -4,8 +4,20 @@ use std::{
 	fmt,
 	iter::Extend,
 };
+use crate::user::User;
+use slack::RtmClient;
 
+/// The User ID (a string of the form UXXXXXXX) for the Queue app
+pub const QUEUE_UID: &str = "<@UQMDZF97S>";
 
+/// Sometimes we need these.
+pub const INSPIRATIONAL_QUOTE: &str =
+	"_Waiting in line is a great opportunity to meet people, daydream, or play._\n\t\u{2014}Patch Adams";
+
+/// Given the body of a post to Slack, determine someone mentioned the Queue app
+fn is_app_mention(text: &str) -> bool {
+	text.contains(QUEUE_UID)
+}
 
 /// The main data structure for keeping track of Slack users for an event.
 #[derive(Debug)]
@@ -107,9 +119,60 @@ impl Queue {
 					String::from("You cannot be done; you are not at the front of the line!")
 				}
 			},
-			"show" => /* TODO: Use user names instead of User IDs */ format!("{}", self),
+			"show" => /* TODO: Current implementation will mention users */ format!("{}", self),
 			s => format!("Unrecognized command {}. Your options are: add, cancel, done, and show", s)
 		}
+	}
+}
+
+impl slack::EventHandler for Queue {
+	fn on_event(&mut self, cli: &RtmClient, event: slack::Event) {
+		match event {
+			slack::Event::Message(message) => {
+				if let slack::Message::Standard(ms) = *message {
+					// The content of the message
+					let text = ms.text.unwrap_or_default();
+					if is_app_mention(&*text) {
+						// Who posted the message
+						let user = ms.user.expect("User does not exist");
+						// What to send back to Slack
+						let response = self.determine_response(
+							User(String::from(user)),
+							text.as_str()
+						);
+						// The channel the message was posted in
+						let chan = ms.channel.expect("Channel does not exist");
+						// Send 'em back!
+						let _ = cli.sender().send_message(&*chan, &*response);
+					}
+				}
+			},
+			_ => (),
+		};
+	}
+
+	fn on_close(&mut self, _cli: &RtmClient) {
+		println!("on_close");
+	}
+
+	fn on_connect(&mut self, cli: &RtmClient) {
+		println!("on_connect");
+		let botspam_chan_id = cli
+			.start_response()
+			.channels
+			.as_ref()
+			.and_then(|chans| {
+				chans
+					.iter()
+					.find(|chan| match chan.name {
+						None => false,
+						Some(ref name) => name == "botspam",
+					})
+			})
+			.and_then(|chan| chan.id.as_ref())
+			.expect("channel botspam not found")
+		;
+		let _ = cli.sender().send_message(&botspam_chan_id, INSPIRATIONAL_QUOTE);
 	}
 }
 
@@ -132,7 +195,7 @@ impl From<Vec<User>> for Queue {
 }
 
 impl fmt::Display for Queue {
-	fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		write!(f, "Here are the people currently in line:\n{}", self
 			.0
 			.iter()
