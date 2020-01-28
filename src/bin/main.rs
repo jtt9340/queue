@@ -6,7 +6,8 @@ use actix_web::{App, HttpResponse, HttpServer, Responder, web};
 use serde::Serialize;
 use serde_json as json;
 
-mod queue;
+pub use print_queue::queue;
+pub use print_queue::user;
 
 /// The IP Address we are connecting to
 // const IP_ADDR: [u8; 4] = [213u8, 108, 105, 162];
@@ -115,7 +116,7 @@ async fn send_request(payload: json::Value, app_state: Arc<AppState>) {
 			;
 
 		let response = determine_response(
-			queue::User(String::from(user)),
+			user::User(String::from(user)),
 			text,
 			&mut app_state.queue
 		);
@@ -147,7 +148,7 @@ async fn send_request(payload: json::Value, app_state: Arc<AppState>) {
 /// Parameter `user` is the user (a string of the format UXXXXXXXX) who said `body`. `queue` is the
 /// `Queue` of `User`s that mutated after calling this function
 /// Currently, this function has the side-effect of mutating the state of the queue passed in
-fn determine_response(user: queue::User, body: &str, queue: &mut queue::Queue) -> String {
+fn determine_response(user: user::User, body: &str, queue: &mut queue::Queue) -> String {
 	match body.to_lowercase().as_str() {
 		"add" => {
 			if queue.add_user(user) {

@@ -3,15 +3,10 @@ use std::{
 	convert::From,
 	iter::Extend,
 };
+use crate::user::User;
 
 /// The User ID (a string of the form UXXXXXXX) for the Queue app
 pub const QUEUE_UID: &str = "<@UQMDZF97S>";
-
-/// A user of Slack, i.e. someone who will wait in line for an event.
-///
-/// This type simply wraps a string of the format UXXXXXXXX which represents the ID of a Slack user.
-#[derive(Eq, PartialEq, Clone, Debug)]
-pub struct User(pub String);
 
 /// The main data structure for keeping track of Slack users for an event.
 #[derive(Debug)]
@@ -47,7 +42,7 @@ impl Queue {
 	///
 	/// Returns `None` if the queue is empty. Else returns `Some(user)` where `user` is the user at
 	/// the front of the line.
-	pub(in crate) fn peek_first_user_in_line(&self) -> Option<&User> {
+	pub fn peek_first_user_in_line(&self) -> Option<&User> {
 		self.0.get(0)
 	}
 
