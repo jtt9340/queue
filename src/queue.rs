@@ -16,6 +16,9 @@ pub const QUEUE_UID: &str = "<@UQMDZF97S>";
 pub const INSPIRATIONAL_QUOTE: &str =
 	"_Waiting in line is a great opportunity to meet people, daydream, or play._\n\t\u{2014}Patch Adams";
 
+/// Which Slack channel Queue is running in.
+const CHANNEL: &str = "3d-printer-queue";
+
 /// Given the body of a post to Slack, determine someone mentioned the Queue app
 fn is_app_mention(text: &str) -> bool {
 	text.contains(QUEUE_UID)
@@ -23,6 +26,7 @@ fn is_app_mention(text: &str) -> bool {
 
 /// The main data structure for keeping track of Slack users for an event.
 #[derive(Debug)]
+// TODO: Make implementation persistent (write to file)
 pub struct Queue(VecDeque<User>);
 
 impl Queue {
@@ -186,7 +190,7 @@ impl slack::EventHandler for Queue {
 					.iter()
 					.find(|chan| match chan.name {
 						None => false,
-						Some(ref name) => name == "botspam",
+						Some(ref name) => name == CHANNEL,
 					})
 			})
 			.and_then(|chan| chan.id.as_ref())
