@@ -1,6 +1,8 @@
 use std::{
-	collections::VecDeque,
-	convert::From,
+	collections::{
+		HashMap,
+		VecDeque,
+	},
 	fmt,
 	iter::Extend,
 };
@@ -27,12 +29,19 @@ fn is_app_mention(text: &str) -> bool {
 /// The main data structure for keeping track of Slack users for an event.
 #[derive(Debug)]
 // TODO: Make implementation persistent (write to file)
-pub struct Queue(VecDeque<User>);
+pub struct Queue {
+	queue: VecDeque<User>,
+	uid_username_mapping: HashMap<String, String>,
+}
 
 impl Queue {
-	/// Create an empty queue.
-	pub fn new() -> Self {
-		Self(VecDeque::new())
+	/// Create an empty queue. `uids_to_users` is a `std::collections::HashMap` whose keys are Slack
+	/// IDs and whose values are usernames associated with the given Slack ID.
+	pub fn new(uids_to_users: HashMap<String, String>) -> Self {
+		Self {
+			queue: VecDeque::new(),
+			uid_username_mapping: uids_to_users,
+		}
 	}
 
 	/// Add a User to the back of the queue if he or she is not in line already.
@@ -40,10 +49,10 @@ impl Queue {
 	/// Returns whether or not the user was added to the queue. If they weren't, it's because they are
 	/// already in the queue.
 	pub fn add_user(&mut self, user: User) -> bool {
-		if self.0.contains(&user) {
+		if self.queue.contains(&user) {
 			false
 		} else {
-			self.0.push_back(user);
+			self.queue.push_back(user);
 			true
 		}
 	}
@@ -61,7 +70,7 @@ impl Queue {
 	/// Remove the person who is next in line for an event. Returns `None` if there is no such user,
 	/// i.e. the queue is empty.
 	pub fn remove_first_user_in_line(&mut self) -> Option<User> {
-		self.0.pop_front()
+		self.queue.pop_front()
 	}
 
 	/// Handle the done command. Returns a message to post in the Slack channel depending on whether
@@ -90,7 +99,7 @@ impl Queue {
 	/// Returns `None` if the queue is empty. Else returns `Some(user)` where `user` is the user at
 	/// the front of the line.
 	pub(in crate) fn peek_first_user_in_line(&self) -> Option<&User> {
-		self.0.get(0)
+		self.queue.get(0)
 	}
 
 	/// Remove the particular user in the queue, e.g. if they no longer want to wait in line.
@@ -99,15 +108,20 @@ impl Queue {
 	/// queue to begin with.
 	pub fn remove_user(&mut self, user: User) -> bool {
 		// FIXME: this is kinda a naive implementation, perhaps a better implementation is in order?
-		for idx in 0..self.0.len() {
-			if self.0[idx] == user {
-				self.0.remove(idx);
+		for idx in 0..self.queue.len() {
+			if self.queue[idx] == user {
+				self.queue.remove(idx);
 				/* We can return early because it is invariant that there is only one of each user in
 				the queue */
 				return true;
 			}
 		}
 		false
+	}
+
+	/// Given a Slack ID, return the username associated with that ID, if there is one.
+	fn get_username_by_id(&self, id: &str) -> Option<&String> {
+		self.uid_username_mapping.get(id)
 	}
 
 	/// Handle the cancel command. The cancel command will remove someone from the queue regardless
@@ -143,7 +157,7 @@ impl Queue {
 			"add" => self.add(user),
 			"cancel" => self.cancel(user),
 			"done" => self.done(user),
-			"show" => /* TODO: Current implementation will mention users */ format!("{}", self),
+			"show" => format!("{}", self),
 			s => format!("Unrecognized command {}. Your options are: add, cancel, done, and show", s)
 		}
 	}
@@ -202,28 +216,19 @@ impl slack::EventHandler for Queue {
 
 impl Extend<User> for Queue {
 	fn extend<T>(&mut self, iter: T) where T: IntoIterator<Item=User> {
-		self.0.extend(iter);
-	}
-}
-
-impl From<VecDeque<User>> for Queue {
-	fn from(vec_deque: VecDeque<User>) -> Self {
-		Self(vec_deque)
-	}
-}
-
-impl From<Vec<User>> for Queue {
-	fn from(vec: Vec<User>) -> Self {
-		Self(VecDeque::from(vec))
+		self.queue.extend(iter);
 	}
 }
 
 impl fmt::Display for Queue {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		write!(f, "Here are the people currently in line:\n{}", self
-			.0
+			.queue
 			.iter()
-			.map(|u| format!("• <@{}>\n", u.0))
+			.map(|u| format!("• {}\n", self
+				.get_username_by_id(u.0.as_str())
+				.expect(format!("For some reason user {:?} did not have a username", u)
+					.as_str())))
 			.fold(String::default(), |acc, line| acc.to_owned() + &line)
 		)
 	}
