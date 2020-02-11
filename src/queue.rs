@@ -1,15 +1,15 @@
 use std::{
-	collections::{
-		HashMap,
-		VecDeque,
-	},
+	collections::VecDeque,
 	fmt,
 	iter::Extend,
 };
-
 use slack::RtmClient;
-
-use crate::user::User;
+use crate::{
+	user::{
+		User,
+		SlackMap,
+	},
+};
 
 /// The User ID (a string of the form UXXXXXXX) for the Queue app
 pub const QUEUE_UID: &str = "<@UQMDZF97S>";
@@ -31,13 +31,13 @@ fn is_app_mention(text: &str) -> bool {
 // TODO: Make implementation persistent (write to file)
 pub struct Queue {
 	queue: VecDeque<User>,
-	uid_username_mapping: HashMap<String, String>,
+	uid_username_mapping: SlackMap,
 }
 
 impl Queue {
 	/// Create an empty queue. `uids_to_users` is a `std::collections::HashMap` whose keys are Slack
 	/// IDs and whose values are usernames associated with the given Slack ID.
-	pub fn new(uids_to_users: HashMap<String, String>) -> Self {
+	pub fn new(uids_to_users: SlackMap) -> Self {
 		Self {
 			queue: VecDeque::new(),
 			uid_username_mapping: uids_to_users,
@@ -119,8 +119,8 @@ impl Queue {
 		false
 	}
 
-	/// Given a Slack ID, return the username associated with that ID, if there is one.
-	fn get_username_by_id(&self, id: &str) -> Option<&String> {
+	/// Given a Slack ID, return the real name-maybe username pair associated with that ID, if there is one.
+	fn get_username_by_id(&self, id: &str) -> Option<&(String, Option<String>)> {
 		self.uid_username_mapping.get(id)
 	}
 
@@ -149,6 +149,7 @@ impl Queue {
 			Commands are only activated when the body has an @Queue. But we need to strip the command
 			of its @Queue mention before seeing what the user wants Queue to do.
 		*/
+		// TODO: handle cases where the mention is not at the beginning of the string
 		let lowercase_queue_id = QUEUE_UID.to_lowercase();
 		let body = body.to_lowercase();
 		let body = body.trim_start_matches(lowercase_queue_id.as_str());
@@ -225,10 +226,18 @@ impl fmt::Display for Queue {
 		write!(f, "Here are the people currently in line:\n{}", self
 			.queue
 			.iter()
-			.map(|u| format!("• {}\n", self
-				.get_username_by_id(u.0.as_str())
-				.expect(format!("For some reason user {:?} did not have a username", u)
-					.as_str())))
+			.map(|u| {
+				let (real_name_or_id, maybe_username) = self
+					.get_username_by_id(u.0.as_str())
+					.expect(format!("For some reason user {:?} did not have a real name", u)
+						.as_str()
+					)
+				;
+				format!("• {}{}\n", real_name_or_id, match maybe_username {
+					Some(uname) if !uname.is_empty() => format!(" ({})", uname),
+					_ => String::default(),
+				})
+			})
 			.fold(String::default(), |acc, line| acc.to_owned() + &line)
 		)
 	}
