@@ -2,7 +2,6 @@ use std::{env, process};
 
 pub use print_queue::queue;
 pub use print_queue::user;
-
 use user::create_uid_username_mapping;
 
 /// Entry point for the Slack bot.
@@ -26,6 +25,6 @@ fn main() -> Result<(), slack::error::Error> {
 	println!("{:#?}", users);
 	println!("Number of members: {:?}", users.len());
 
-	let mut queue = queue::Queue::new(users);
+	let mut queue = queue::Queue::new(&users);
 	slack::RtmClient::login_and_run(&api_key, &mut queue)
 }
