@@ -28,16 +28,18 @@ fn is_app_mention(text: &str) -> bool {
 
 /// The main data structure for keeping track of Slack users for an event.
 #[derive(Debug)]
-// TODO: Make implementation persistent (write to file)
-pub struct Queue {
+// BIG TODO: Make implementation persistent (write to file)
+pub struct Queue<'a> {
+	/// A queue of references to UserIDs in the `uid_username_mapping`
 	queue: VecDeque<UserID>,
-	uid_username_mapping: SlackMap,
+	/// All the possible members of a Slack workspace that can join a queue
+	uid_username_mapping: &'a SlackMap,
 }
 
-impl Queue {
+impl<'a> Queue<'a> {
 	/// Create an empty queue. `uids_to_users` is a `std::collections::HashMap` whose keys are Slack
 	/// IDs and whose values are usernames associated with the given Slack ID.
-	pub fn new(uids_to_users: SlackMap) -> Self {
+	pub fn new(uids_to_users: &'a SlackMap) -> Self {
 		Self {
 			queue: VecDeque::new(),
 			uid_username_mapping: uids_to_users,
@@ -46,24 +48,23 @@ impl Queue {
 
 	/// Add a User to the back of the queue if he or she is not in line already.
 	///
-	/// Returns whether or not the user was added to the queue. If they weren't, it's because they are
-	/// already in the queue.
-	pub fn add_user(&mut self, user: UserID) -> bool {
+	/// Returns a reference to the user that has just been added, or None if that user was already in
+	/// the queue.
+	pub fn add_user(&mut self, user: UserID) -> Option<&UserID> {
 		if self.queue.contains(&user) {
-			false
+			None
 		} else {
 			self.queue.push_back(user);
-			true
+			self.queue.back()
 		}
 	}
 
 	/// Handle the add command. Returns a message to post in the Slack channel depending on whether
 	/// or not the user was actually added.
 	fn add(&mut self, user: UserID) -> String {
-		if self.add_user(user.clone()) {
-			format!("Okay <@{}>, I have added you to the queue", user.uid())
-		} else {
-			String::from("You are already in the queue!")
+		match self.add_user(user) {
+			Some(user) => format!("Okay <@{}>, I have added you to the queue.", user),
+			None => String::from("You are already in the queue!"),
 		}
 	}
 
@@ -83,9 +84,9 @@ impl Queue {
 			/* It *should* be safe to unwrap() here because the condition ensures there is a
 			first user in line in the first place */
 			let user = self.remove_first_user_in_line().unwrap();
-			let mut response = format!("Okay <@{}>, you have been removed from the front of the queue.", user.uid());
+			let mut response = format!("Okay <@{}>, you have been removed from the front of the queue.", user.0);
 			if let Some(next) = self.peek_first_user_in_line() {
-				response.push_str(format!("Hey <@{}>! You're next in line!", next.uid()).as_str());
+				response.push_str(format!("Hey <@{}>! You're next in line!", next.0).as_str());
 			}
 			response
 		} else {
@@ -120,7 +121,7 @@ impl Queue {
 	}
 
 	/// Given a Slack ID, return the real name-maybe username pair associated with that ID, if there is one.
-	fn get_username_by_id(&self, id: &str) -> Option<&(String, Option<String>)> {
+	fn get_username_by_id(&self, id: &UserID) -> Option<&(Option<String>, Option<String>)> {
 		self.uid_username_mapping.get(id)
 	}
 
@@ -131,12 +132,12 @@ impl Queue {
 	fn cancel(&mut self, user: UserID) -> String {
 		if user == *self
 			.peek_first_user_in_line()
-			.unwrap_or(&UserID::new(QUEUE_UID, 0 /* TODO: CHANGE ORDINAL */))
+			.unwrap_or(&UserID::new(QUEUE_UID))
 		{
 			String::from("Use the done command to leave the queue. The difference \
 			between cancel and done is that done will notify the next user in line.")
 		} else if self.remove_user(user.clone()) {
-			format!("Okay <@{}>, I have removed you from the queue.", user.uid())
+			format!("Okay <@{}>, I have removed you from the queue.", user.0)
 		} else {
 			String::from("You weren't in the queue to begin with!")
 		}
@@ -168,7 +169,7 @@ impl Queue {
 	}
 }
 
-impl slack::EventHandler for Queue {
+impl slack::EventHandler for Queue<'_> {
 	fn on_event(&mut self, cli: &RtmClient, event: slack::Event) {
 		match event {
 			slack::Event::Message(message) => {
@@ -180,9 +181,7 @@ impl slack::EventHandler for Queue {
 						let user = ms.user.expect("User does not exist");
 						// What to send back to Slack
 						let response = self.determine_response(
-							/* TODO: change determine_response to only accept &strs and then create a
-								    user in determine_response so that its ordinal position is correct */
-							UserID::new(&*user, 0),
+							UserID(user),
 							text.as_str(),
 						);
 						// The channel the message was posted in
@@ -221,28 +220,30 @@ impl slack::EventHandler for Queue {
 	}
 }
 
-impl Extend<UserID> for Queue {
+impl Extend<UserID> for Queue<'_> {
 	fn extend<T>(&mut self, iter: T) where T: IntoIterator<Item=UserID> {
 		self.queue.extend(iter);
 	}
 }
 
-impl fmt::Display for Queue {
+impl fmt::Display for Queue<'_> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		write!(f, "Here are the people currently in line:\n{}", self
 			.queue
 			.iter()
-			.map(|u| {
-				let (real_name_or_id, maybe_username) = self
-					.get_username_by_id(u.uid().as_str())
-					.expect(format!("For some reason user {:?} did not have a real name", u)
-						.as_str()
-					)
-				;
-				format!("• {}{}\n", real_name_or_id, match maybe_username {
-					Some(uname) if !uname.is_empty() => format!(" ({})", uname),
-					_ => String::default(),
-				})
+			.enumerate()
+			.map(|idx_user_pair| {
+				let (idx, u) = idx_user_pair;
+				let (maybe_real_name, maybe_username) = self
+					.get_username_by_id(u)
+					.expect(format!("For some reason user {} did not have an ID", u).as_str())
+					;
+				let u = &u.to_string();
+				let real_name = maybe_real_name.as_ref().unwrap_or(u);
+				match maybe_username {
+					Some(uname) if !uname.is_empty() => format!("{}. {} ({})", idx, real_name, uname),
+					_ => format!("{}. {}", idx, real_name),
+				}
 			})
 			.fold(String::default(), |acc, line| acc.to_owned() + &line)
 		)
@@ -257,10 +258,11 @@ mod tests {
 
 	#[test]
 	fn create_queue() {
-		let queue_a = Queue::new(HashMap::new());
+		let hash_map = HashMap::new();
+		let queue_a = Queue::new(&hash_map);
 		let queue_b = Queue {
 			queue: VecDeque::new(),
-			uid_username_mapping: HashMap::new(),
+			uid_username_mapping: &hash_map,
 		};
 
 		assert_eq!(queue_a.queue, queue_b.queue);
@@ -269,45 +271,48 @@ mod tests {
 
 	#[test]
 	fn add_users() {
-		let mut queue = Queue::new(HashMap::new());
+		let hash_map = HashMap::new();
+		let mut queue = Queue::new(&hash_map);
 
-		assert!(queue.add_user(UserID::new("UA8RXUPSP", 0)));
-		assert!(queue.add_user(UserID::new("UNB2LMZRP", 1)));
-		assert!(queue.add_user(UserID::new("UN480W9ND", 2)));
+		assert_eq!(queue.add_user(UserID::new("UA8RXUPSP")), Some(&UserID::new("UA8RXUPSP")));
+		assert_eq!(queue.add_user(UserID::new("UNB2LMZRP")), Some(&UserID::new("UNB2LMZRP")));
+		assert_eq!(queue.add_user(UserID::new("UN480W9ND")), Some(&UserID::new("UN480W9ND")));
 
 		assert_eq!(queue.queue, [
-			UserID::new("UA8RXUPSP", 0),
-			UserID::new("UNB2LMZRP", 1),
-			UserID::new("UN480W9ND", 2),
+			UserID::new("UA8RXUPSP"),
+			UserID::new("UNB2LMZRP"),
+			UserID::new("UN480W9ND"),
 		]);
 	}
 
 	#[test]
 	fn add_duplicate_users() {
-		let mut queue = Queue::new(HashMap::new());
+		let hash_map = HashMap::new();
+		let mut queue = Queue::new(&hash_map);
 
-		assert!(queue.add_user(UserID::new("UA8RXUPSP", 0)));
-		assert!(queue.add_user(UserID::new("UNB2LMZRP", 1)));
-		assert!(!queue.add_user(UserID::new("UA8RXUPSP", 2)));
+		assert_eq!(queue.add_user(UserID::new("UA8RXUPSP")), Some(&UserID::new("UA8RXUPSP")));
+		assert_eq!(queue.add_user(UserID::new("UNB2LMZRP")), Some(&UserID::new("UNB2LMZRP")));
+		assert!(queue.add_user(UserID::new("UA8RXUPSP")).is_none());
 
 		assert_eq!(queue.queue, [
-			UserID::new("UA8RXUPSP", 0),
-			UserID::new("UNB2LMZRP", 1),
+			UserID::new("UA8RXUPSP"),
+			UserID::new("UNB2LMZRP"),
 		]);
 	}
 
 	#[test]
 	fn remove_front_users() {
-		let mut queue = Queue::new(HashMap::new());
+		let hash_map = HashMap::new();
+		let mut queue = Queue::new(&hash_map);
 
-		queue.add_user(UserID::new("UA8RXUPSP", 0));
-		queue.add_user(UserID::new("UNB2LMZRP", 1));
-		queue.add_user(UserID::new("UN480W9ND", 2));
+		queue.add_user(UserID::new("UA8RXUPSP"));
+		queue.add_user(UserID::new("UNB2LMZRP"));
+		queue.add_user(UserID::new("UN480W9ND"));
 
-		assert_eq!(queue.remove_first_user_in_line(), Some(UserID::new("UA8RXUPSP", 0)));
+		assert_eq!(queue.remove_first_user_in_line(), Some(UserID::new("UA8RXUPSP")));
 		assert_eq!(queue.queue, [
-			UserID::new("UNB2LMZRP", 1),
-			UserID::new("UN480W9ND", 2),
+			UserID::new("UNB2LMZRP"),
+			UserID::new("UN480W9ND"),
 		]);
 
 		// Empty the queue
@@ -320,87 +325,68 @@ mod tests {
 
 	#[test]
 	fn peek_front_users() {
-		let mut queue = Queue::new(HashMap::new());
+		let hash_map = HashMap::new();
+		let mut queue = Queue::new(&hash_map);
 
-		queue.add_user(UserID::new("UA8RXUPSP", 0));
-		queue.add_user(UserID::new("UNB2LMZRP", 1));
-		queue.add_user(UserID::new("UN480W9ND", 2));
+		queue.add_user(UserID::new("UA8RXUPSP"));
+		queue.add_user(UserID::new("UNB2LMZRP"));
+		queue.add_user(UserID::new("UN480W9ND"));
 
-		assert_eq!(queue.peek_first_user_in_line(), Some(&UserID::new("UA8RXUPSP", 0)));
+		assert_eq!(queue.peek_first_user_in_line(), Some(&UserID::new("UA8RXUPSP")));
 		// Does not mutate the queue itself
 		assert_eq!(queue.queue, [
-			UserID::new("UA8RXUPSP", 0),
-			UserID::new("UNB2LMZRP", 1),
-			UserID::new("UN480W9ND", 2),
+			UserID::new("UA8RXUPSP"),
+			UserID::new("UNB2LMZRP"),
+			UserID::new("UN480W9ND"),
 		]);
 	}
 
 	#[test]
 	fn remove_arbitrary_users() {
-		let mut queue = Queue::new(HashMap::new());
+		let hash_map = HashMap::new();
+		let mut queue = Queue::new(&hash_map);
 
-		queue.add_user(UserID::new("UA8RXUPSP", 0));
-		queue.add_user(UserID::new("UNB2LMZRP", 1));
-		queue.add_user(UserID::new("UN480W9ND", 2));
+		queue.add_user(UserID::new("UA8RXUPSP"));
+		queue.add_user(UserID::new("UNB2LMZRP"));
+		queue.add_user(UserID::new("UN480W9ND"));
 
-		assert!(queue.remove_user(UserID::new("UNB2LMZRP", 1)));
+		assert!(queue.remove_user(UserID::new("UNB2LMZRP")));
 		assert_eq!(queue.queue, [
-			UserID::new("UA8RXUPSP", 0),
-			UserID::new("UN480W9ND", 2),
+			UserID::new("UA8RXUPSP"),
+			UserID::new("UN480W9ND"),
 		]);
 	}
 
 	#[test]
 	fn remove_non_existent_users() {
-		let mut queue = Queue::new(HashMap::new());
+		let hash_map = HashMap::new();
+		let mut queue = Queue::new(&hash_map);
 
-		assert!(!queue.remove_user(UserID::new("UNB2LMZRP", 0)));
+		assert!(!queue.remove_user(UserID::new("UNB2LMZRP")));
 
-		queue.add_user(UserID::new("UA8RXUPSP", 0));
-		queue.add_user(UserID::new("UNB2LMZRP", 1));
-		queue.add_user(UserID::new("UN480W9ND", 2));
+		queue.add_user(UserID::new("UA8RXUPSP"));
+		queue.add_user(UserID::new("UNB2LMZRP"));
+		queue.add_user(UserID::new("UN480W9ND"));
 
 		queue.remove_first_user_in_line();
-		assert!(!queue.remove_user(UserID::new("UA8RXUPSP", 0)));
+		assert!(!queue.remove_user(UserID::new("UA8RXUPSP")));
 	}
 
 	#[test]
 	fn extend_queue() {
-		let mut queue = Queue::new(HashMap::new());
+		let hash_map = HashMap::new();
+		let mut queue = Queue::new(&hash_map);
 
 		queue.extend(vec![
-			UserID::new("UA8RXUPSP", 0),
-			UserID::new("UNB2LMZRP", 1),
-			UserID::new("UN480W9ND", 2),
+			UserID::new("UA8RXUPSP"),
+			UserID::new("UNB2LMZRP"),
+			UserID::new("UN480W9ND"),
 		]);
 
 		assert_eq!(queue.queue, [
-			UserID::new("UA8RXUPSP", 0),
-			UserID::new("UNB2LMZRP", 1),
-			UserID::new("UN480W9ND", 2),
+			UserID::new("UA8RXUPSP"),
+			UserID::new("UNB2LMZRP"),
+			UserID::new("UN480W9ND"),
 		]);
 	}
-
-	/* Queue no longer implements From<VecDeque<UserID>> and From<Vec<UserID>>
-	#[test]
-	fn from_vec_deque() {
-		let mut vec_deque = VecDeque::new();
-		vec_deque.push_back(UserID::new("UA8RXUPSP", 0));
-		vec_deque.push_back(UserID::new("UNB2LMZRP", 1));
-		vec_deque.push_back(UserID::new("UN480W9ND", 2));
-
-		let queue = Queue::from(vec_deque);
-		assert_eq!(queue.0, [UserID(String::from("UA8RXUPSP")), UserID(String::from("UNB2LMZRP")), UserID(String::from("UN480W9ND"))]);
-	}
-
-	#[test]
-	fn from_vec() {
-		let queue = Queue::from(vec![
-			UserID(String::from("UA8RXUPSP")),
-			UserID(String::from("UNB2LMZRP")),
-			UserID(String::from("UN480W9ND")),
-		]);
-
-		assert_eq!(queue.0, [UserID(String::from("UA8RXUPSP")), UserID(String::from("UNB2LMZRP")), UserID(String::from("UN480W9ND"))]);
-	}*/
 }
