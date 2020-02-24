@@ -1,3 +1,4 @@
+![Queue Logo](Line Of People Clipart.jpg)
 # Queue
 A Slack bot that keeps track of people waiting in line for an event and notifies next in line when it is their turn
 
@@ -24,3 +25,4 @@ TODO
 ## ideas.txt
 This repo contains a file titled `ideas.txt` containing ways that this app can be improved. For starters, the commands
 __cancel__ and __done__ are redundant and can be combined into one. 
+	
