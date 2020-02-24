@@ -1,0 +1,11 @@
+Here are some suggestions for how to improve this app:
+
+- Make it expandable. Right now, the app will keep track of people waiting in
+line for a 3D printer. Make it so that people can create their own events and
+have it track multiple queues, one for each event, at a time.
+
+- Have it give a time estimate for how long a print will take.
+
+- Automatically notify the head of the line when a 3D print is done.
+
+- Notify someone when they have been at the front of the line for more than a day.
