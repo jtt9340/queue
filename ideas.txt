@@ -9,3 +9,5 @@ have it track multiple queues, one for each event, at a time.
 - Automatically notify the head of the line when a 3D print is done.
 
 - Notify someone when they have been at the front of the line for more than a day.
+
+- Allow admins to rearrange people in the queue. Should multiple instances of the same person be allowed in the queue?
