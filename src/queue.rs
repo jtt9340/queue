@@ -86,7 +86,7 @@ impl<'a> Queue<'a> {
 			let user = self.remove_first_user_in_line().unwrap();
 			let mut response = format!("Okay <@{}>, you have been removed from the front of the queue.", user.0);
 			if let Some(next) = self.peek_first_user_in_line() {
-				response.push_str(format!("Hey <@{}>! You're next in line!", next.0).as_str());
+				response.push_str(format!("\nHey <@{}>! You're next in line!", next.0).as_str());
 			}
 			response
 		} else {
@@ -241,8 +241,8 @@ impl fmt::Display for Queue<'_> {
 				let u = &u.to_string();
 				let real_name = maybe_real_name.as_ref().unwrap_or(u);
 				match maybe_username {
-					Some(uname) if !uname.is_empty() => format!("{}. {} ({})", idx, real_name, uname),
-					_ => format!("{}. {}", idx, real_name),
+					Some(uname) if !uname.is_empty() => format!("{}. {} ({})\n", idx, real_name, uname),
+					_ => format!("{}. {}\n", idx, real_name),
 				}
 			})
 			.fold(String::default(), |acc, line| acc.to_owned() + &line)
