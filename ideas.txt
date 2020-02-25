@@ -10,4 +10,8 @@ have it track multiple queues, one for each event, at a time.
 
 - Notify someone when they have been at the front of the line for more than a day.
 
-- Allow admins to rearrange people in the queue. Should multiple instances of the same person be allowed in the queue?
+- Allow admins to rearrange people in the queue.
+
+- Multiple instances of the same person should be allowed in the queue
+    - If the queue is empty, you can have up to 3 back-to-back instances of yourself
+    - Otherwise, you cannot add yourself to the queue unless the person in front of you is not you
