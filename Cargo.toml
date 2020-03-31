@@ -16,6 +16,10 @@ path = "src/bin/verify.rs"
 name = "slack_main"
 path = "src/bin/main.rs"
 
+[[bin]]
+name = "clear_file"
+path = "src/bin/clear_file.rs"
+
 [lib]
 name = "print_queue"
 path = "src/lib.rs"

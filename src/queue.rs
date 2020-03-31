@@ -5,11 +5,11 @@ use std::{
 	io::{
 		self,
 		BufWriter,
+		Seek,
 		SeekFrom,
 	},
 	ops::Deref,
 };
-use std::io::Seek;
 
 use slack::RtmClient;
 
@@ -31,6 +31,27 @@ pub const INSPIRATIONAL_QUOTE: &str =
 
 /// Which Slack channel Queue is running in.
 const CHANNEL: &str = "3d-printer-queue";
+
+/// A help message to display when the `help` command is invoked
+const USAGE: &str = "*NAME*\n\
+\tQueue \u{2014} a Slack bot to keep track of who is using a 3D printer\n\n\
+*SYNOPSIS*\n\
+\t@Queue command\n\n\
+*DESCRIPTION*\n\
+\tCurrently, CSH uses a sticky note to keep track of who is waiting in line to use a 3D printer. This \
+app replaces the sticky note. You interact with Queue by @mentioning it, followed by a command. \
+Here are the current commands Queue recognizes:\n\
+* *add*: Add yourself to the queue. You can add yourself multiples times, in case there are multiple \
+things you want to 3D print. However, you cannot have two back-to-back instances of yourself in the \
+queue so that you let others get a chance. However, if the queue is relatively empty (and by relatively \
+empty I mean less than 3 people in line), then you _can_ have back-to-back instances of yourself, since \
+not as many people are being negatively affected by having back-to-back instances of yourself in the queue \
+as they would be if there more than 3 people in line.\n\
+* *done*: Leave the queue. If there are multiple instances of you in the queue, the _first_ instance \
+(i.e. the one closest to the front) is removed. If you were in 0th place when you were removed, the \
+person is 1st place is notified of this change.\n\
+* *show*: See who is in the queue and in what place.\n\
+* *help*: Display this message.";
 
 /// Given the body of a post to Slack, determine someone mentioned the Queue app
 fn is_app_mention(text: &str) -> bool {
@@ -124,7 +145,16 @@ impl<'a> Queue<'a> {
 			write!(output, "{}\t{}\n", pos, uid)?;
 		}
 
+		// Get the number of bytes in the file currently
+		let num_bytes = self.db_conn.seek(SeekFrom::End(0))?;
+		// Now go back to the start of the file
 		self.db_conn.seek(SeekFrom::Start(0))?;
+		// And now create a bunch of blanks to erase the file
+		let blanks = vec![b' '; num_bytes as usize];
+		self.db_conn.write_all(&*blanks)?;
+		// This is getting tiring...go back to the start of the file
+		self.db_conn.seek(SeekFrom::Start(0))?;
+		// Write the new state
 		self.db_conn.write_all(output.as_slice())?;
 		self.db_conn.flush()
 	}
@@ -135,13 +165,7 @@ impl<'a> Queue<'a> {
 	/// front of them is __not themselves__.
 	/// 2. If the queue *is empty*, then a user can be added up to three times.
 	fn can_add(&self, user: &UserID) -> bool {
-		if self.len() >= 3 {
-			// Rule 1 (see above)
-			self.back().unwrap() != user
-		} else {
-			// Rule 2 (see above)
-			self.iter().all(|u| u == user)
-		}
+		self.len() < 3 || self.back() != Some(user)
 	}
 
 	/// Add a User to the back of the queue.
@@ -196,7 +220,7 @@ impl<'a> Queue<'a> {
 					if idx == 0 {
 						" the front of "
 					} else {
-						""
+						" "
 					}
 				);
 				// If the person just removed was at the front, then notify the next person in line
@@ -288,8 +312,8 @@ impl<'a> Queue<'a> {
 			// "cancel" => self.cancel(user),
 			"done" => self.done(user),
 			"show" => format!("{}", self),
-			"help" => String::from("Good help is hard to find."),
-			s => format!("Unrecognized command {}. Your options are: add, done, show, and help", s)
+			"help" => String::from(USAGE),
+			s => format!("Unrecognized command {}. Try `@Queue help`.", s)
 		}
 	}
 }
