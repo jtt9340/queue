@@ -1,12 +1,35 @@
 use std::{env, process};
 
+use getopts::Options;
+
 pub use print_queue::queue;
 pub use print_queue::user;
 use user::create_uid_username_mapping;
 
 /// Entry point for the Slack bot.
 fn main() -> Result<(), slack::error::Error> {
-	let args = env::args().collect::<Vec<String>>();
+	let args = env::args();
+
+	let mut opts = Options::new();
+	opts.reqopt(
+		"k",
+		"key",
+		"Slack bot API key",
+		"API-KEY",
+	);
+	opts.optopt(
+		"f",
+		"file",
+		"name of the backup to use; will be created if empty",
+		"FILE",
+	);
+	opts.optflag("h", "help", "show this help menu and exit");
+
+	let matches = match opts.parse(args) {
+		Ok(m) => m,
+		Err(f) => panic!(f.to_string()),
+	};
+
 	let api_key = match args.len() {
 		0 | 1 => {
 			eprintln!("No API key in args! Usage: cargo run --bin slack_main --features slack -- <api-key>");
