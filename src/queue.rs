@@ -10,7 +10,6 @@ use std::{
 	},
 	io::{
 		self,
-		BufReader,
 		BufWriter,
 		Seek,
 		SeekFrom,
@@ -157,6 +156,7 @@ impl<'a> Queue<'a> {
 
 		let mut people = BTreeMap::new();
 		let mut backup_file_contents = String::new();
+		let backup_file_name = path.as_ref().display();
 		let mut backup_file = OpenOptions::new()
 			.read(true)
 			.write(true)
@@ -167,17 +167,27 @@ impl<'a> Queue<'a> {
 			;
 
 		if let Err(e) = backup_file.read_to_string(&mut backup_file_contents) {
-			panic!("could not read {}: {}", path, e);
+			panic!("could not read {:?}: {}", backup_file_name, e);
 		}
 
 		for line in backup_file_contents.lines() {
-			let (pos, uid) = line.split_whitespace().collect::<(&str, &str)>();
+			let [pos, uid] = {
+				let err_msg = "Invalid file format: each line must contain a parse-able \
+				positive integer followed by some amount of whitespace, followed by a Slack user-id";
+				let mut iter = line.split_whitespace();
+				[
+					iter.next().expect(err_msg),
+					iter.next().expect(err_msg),
+				]
+			};
 			let pos = pos
 				.parse::<usize>()
 				.expect("Invalid file format: each line in the file must start with a \
 				parse-able positive integer")
 			;
-			people.insert(pos, uid);
+			if let Some(_) = people.insert(pos, uid) {
+				panic!("Invalid file format: only one person per position (index) in line");
+			}
 		}
 
 		let mut queue = Self {
