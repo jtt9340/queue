@@ -156,7 +156,7 @@ impl<'a> Queue<'a> {
 
 		let mut people = BTreeMap::new();
 		let mut backup_file_contents = String::new();
-		let backup_file_name = path.as_ref().display();
+		let backup_file_name = path.as_ref().as_os_str().to_owned();
 		let mut backup_file = OpenOptions::new()
 			.read(true)
 			.write(true)
@@ -170,7 +170,11 @@ impl<'a> Queue<'a> {
 			panic!("could not read {:?}: {}", backup_file_name, e);
 		}
 
-		for line in backup_file_contents.lines() {
+		// Iterate only over the lines that have content (i.e. are not all whitespace)
+		for line in backup_file_contents
+			.lines()
+			.filter(|s| !s.trim().is_empty())
+		{
 			let [pos, uid] = {
 				let err_msg = "Invalid file format: each line must contain a parse-able \
 				positive integer followed by some amount of whitespace, followed by a Slack user-id";
@@ -182,8 +186,8 @@ impl<'a> Queue<'a> {
 			};
 			let pos = pos
 				.parse::<usize>()
-				.expect("Invalid file format: each line in the file must start with a \
-				parse-able positive integer")
+				.expect("Invalid file format: each line in the file must start with a parse-\
+				able positive integer")
 			;
 			if let Some(_) = people.insert(pos, uid) {
 				panic!("Invalid file format: only one person per position (index) in line");
@@ -196,7 +200,6 @@ impl<'a> Queue<'a> {
 			db_conn: BufWriter::new(backup_file),
 		};
 
-		// I would also like to know people's personal values...
 		for (pos, person) in people {
 			if !queue.add_user_no_write(UserID::new(person)) {
 				panic!("user {} in position {} \"breaks the addition rules\": see the Queue document\
