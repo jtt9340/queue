@@ -1,7 +1,13 @@
 use std::{
-	collections::VecDeque,
+	collections::{
+		BTreeMap,
+		VecDeque,
+	},
 	fmt,
-	fs::File,
+	fs::{
+		File,
+		OpenOptions,
+	},
 	io::{
 		self,
 		BufWriter,
@@ -9,6 +15,7 @@ use std::{
 		SeekFrom,
 	},
 	ops::Deref,
+	path::Path,
 };
 
 use slack::RtmClient;
@@ -60,8 +67,6 @@ fn is_app_mention(text: &str) -> bool {
 
 /// The main data structure for keeping track of Slack users for an event.
 #[derive(Debug)]
-// BIG TODO: Make implementation persistent (write to file)
-//						Question: Do I need to implement std::ops::Drop?
 pub struct Queue<'a> {
 	/// A queue of references to UserIDs in the `uid_username_mapping`
 	queue: VecDeque<UserID>,
@@ -102,9 +107,14 @@ pub enum RemoveResult {
 impl<'a> Queue<'a> {
 	/// Create an empty queue with no previous state. `uids_to_users` is a `std::collections::HashMap`
 	/// whose keys are Slack IDs and whose values are usernames associated with the given Slack ID.
+	///
 	/// This function will also create an empty file that, over the course of the lifetime of this
 	/// queue, will be written to representing the users in the queue so that, if the app were to
-	/// crash, the queue isn't lost.
+	/// crash, the queue isn't lost. By default, this file's name is `queue_state.txt`. If you want
+	/// to use a different name, use [`Queue::from_file`](#method.from_file)
+	///
+	/// # Panics
+	/// This function will panic if the aforementioned `queue_state.txt` fails to be created.
 	pub fn new(uids_to_users: &'a SlackMap) -> Self {
 		Self {
 			queue: VecDeque::new(),
@@ -116,26 +126,97 @@ impl<'a> Queue<'a> {
 		}
 	}
 
-	// TODO: Write a constructor that takes an existing file and restores that state
+	/// Create a queue whose state is described by the file located at `path`, effectively restoring
+	/// it from a previous state. The file should be one that was previously created by running this
+	/// app. Or, if the file does not exist, it will be created.
+	///
+	/// # Examples
+	/// Say the input file contains the following content.
+	/// ```text
+	/// 0 UA8RXUPSP
+	/// 1 UNB2LMZRP
+	/// 2 UN480W9ND
+	/// ```
+	/// Then invoking this function with the above file will create a new `Queue` where the first
+	/// person in line has an ID of `UA8RXUPSP`, the second person in line has an ID of `UNB2LMZRP`,
+	/// and the third person in line has an ID of `UN480W9ND`.
+	///
+	/// # Panics
+	/// For better or worse, there are many ways this function can panic.
+	/// * If the file breaks the "rules" (see the documentation for
+	/// [`Queue::add_user`](#method.add_user)) of adding people to the queue (e.g. the file contains
+	/// the same person five times in a row, which shouldn't be allowed under any circumstance), then
+	/// the file will be rejected and this function will panic.
+	/// * If the file at `path` fails to open for any reason (e.g. permissions).
+	/// * If the file at `path` fails to be read for any reason.
+	/// * If the file is _not_ in the valid format expected by queue: each line is a positive integer,
+	/// followed by a tab, followed by a Slack user ID.
+	pub fn from_file<P: AsRef<Path>>(uids_to_users: &'a SlackMap, path: P) -> Self {
+		use std::io::Read; // needed for the invocation of read_to_string()
+
+		let mut people = BTreeMap::new();
+		let mut backup_file_contents = String::new();
+		let backup_file_name = path.as_ref().as_os_str().to_owned();
+		let mut backup_file = OpenOptions::new()
+			.read(true)
+			.write(true)
+			.create(true)
+			.truncate(false)
+			.open(path)
+			.expect("Could not open backup file for the queue")
+			;
+
+		if let Err(e) = backup_file.read_to_string(&mut backup_file_contents) {
+			panic!("could not read {:?}: {}", backup_file_name, e);
+		}
+
+		// Iterate only over the lines that have content (i.e. are not all whitespace)
+		for line in backup_file_contents
+			.lines()
+			.filter(|s| !s.trim().is_empty())
+		{
+			let [pos, uid] = {
+				let err_msg = "Invalid file format: each line must contain a parse-able \
+				positive integer followed by some amount of whitespace, followed by a Slack user-id";
+				let mut iter = line.split_whitespace();
+				[
+					iter.next().expect(err_msg),
+					iter.next().expect(err_msg),
+				]
+			};
+			let pos = pos
+				.parse::<usize>()
+				.expect("Invalid file format: each line in the file must start with a parse-\
+				able positive integer")
+			;
+			if let Some(_) = people.insert(pos, uid) {
+				panic!("Invalid file format: only one person per position (index) in line");
+			}
+		}
+
+		let mut queue = Self {
+			queue: VecDeque::with_capacity(people.len()),
+			uid_username_mapping: uids_to_users,
+			db_conn: BufWriter::new(backup_file),
+		};
+
+		for (pos, person) in people {
+			if !queue.add_user_no_write(UserID::new(person)) {
+				panic!("user {} in position {} \"breaks the addition rules\": see the Queue document\
+				ation for more", person, pos);
+			}
+		}
+
+		queue
+	}
 
 	/// Writes the current state of `self` to `self.db_conn` so that this particular state can be
 	/// reloaded later.
 	fn write_state(&mut self) -> io::Result<()> {
 		use std::io::Write; // needed for the invocation of std::io::Write::flush
 
-		/* Okay, for *some* reason, even though I create a self.db_conn with File::create, which
-		   *supposedly* creates a file in write-only mode, I've found that for some reason, these
-		   updates to the state of the queue are being _appended_ to the end of the file. I imagine
-		   this is not because the file is somehow in append mode instead of (over)write mode, but
-		   probably has something to do with buffering. So, what I've done is I've created a temporary
-		   buffer that will hold the string representation of the queue that I want to write to the file,
-		   then I write the whole buffer at once. But before I do, I set the file cursor to be the start,
-		   each and every time this function is called, so that the file is indeed overwritten with
-		   the new queue state. I know this may be a "hacky" solution to saving the queue state to a
-		   file; a better method would be to append a position and user ID every time a new UserID is
-		   added to the queue instead of overwrite the whole file each and every time, and then, when
-		   a user is removed, remove *just that line* in the file and then update the numbers of all
-		   subsequent lines. But alas, we will stick with this solution for now. */
+		// We write the state to a temporary buffer before writing the entirety of the buffer to the
+		// file.
 		let mut output = Vec::new();
 		// For each user in the queue, write the line
 		// {user position}<tab>{user ID}
@@ -168,6 +249,18 @@ impl<'a> Queue<'a> {
 		self.len() < 3 || self.back() != Some(user)
 	}
 
+	/// Add a user to the back of the queue _without_ writing to the backup file, returning true if
+	/// the user could be added per the rules, and false otherwise. See
+	/// [`Queue::add_user`](#method.add_user) for more.
+	fn add_user_no_write(&mut self, user: UserID) -> bool {
+		if self.can_add(&user) {
+			self.queue.push_back(user);
+			true
+		} else {
+			false
+		}
+	}
+
 	/// Add a User to the back of the queue.
 	///
 	/// People are allowed to be in the queue multiple times. The rules are as follows:
@@ -185,8 +278,7 @@ impl<'a> Queue<'a> {
 	/// `(u, AddResult::UserSuccessfullyAdded)` is returned, where `u` is a *a reference to* the user
 	/// that was just added to the queue.
 	pub fn add_user(&mut self, user: UserID) -> (UserID, AddResult) {
-		if self.can_add(&user) {
-			self.queue.push_back(user.clone());
+		if self.add_user_no_write(user.clone()) {
 			match self.write_state() {
 				Ok(()) => (user, UserSuccessfullyAdded),
 				Err(e) => (user, UserUnsuccessfullyAdded(e)),
