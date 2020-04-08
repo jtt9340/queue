@@ -26,7 +26,7 @@ All Queue commands are invoked by mentioning Queue (`@Queue`) in a message you p
 
 ## Sample Run
 
-![Queue Demo](./Queue Demo Short.gif)
+![Queue Demo](./Queue%20Demo%20Short.gif)
 
 ## ideas.txt
 This repo contains a file titled `ideas.txt` containing ways that this app can be improved. For instance, there is
