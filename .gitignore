@@ -4,3 +4,11 @@
 
 # These are backup files created by rustfmt
 **/*.rs.bk
+
+.idea
+.git.*
+.DS_Store
+# Test output files that aren't necessary to be tracked
+queue_state*.txt
+test.txt
+users.json
