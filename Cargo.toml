@@ -8,9 +8,13 @@ publish = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+actix = [ "actix-web", "actix-rt" ]
+
 [[bin]]
 name = "verify"
 path = "src/bin/verify.rs"
+required-features = [ "actix" ]
 
 [[bin]]
 name = "slack_main"
@@ -34,3 +38,5 @@ slack = "0.23.0"
 reqwest = { version = "0.10.1", features = ["json"] }
 serde = { version = "1.0.104", features = ["derive"] }
 getopts = "0.2.21"
+actix-web = { version = "2.0.0", optional = true }
+actix-rt = { version = "1.0.0", optional = true }

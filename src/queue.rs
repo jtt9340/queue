@@ -30,7 +30,7 @@ use crate::user::{
 };
 
 /// The User ID (a string of the form UXXXXXXX) for the Queue app
-pub const QUEUE_UID: &str = "<@UQMDZF97S>";
+pub const QUEUE_UID: &str = "<@U01A844Q2US>";
 
 /// Sometimes we need these.
 pub const INSPIRATIONAL_QUOTE: &str =
@@ -412,6 +412,9 @@ impl<'a> Queue<'a> {
 
 impl slack::EventHandler for Queue<'_> {
 	fn on_event(&mut self, cli: &RtmClient, event: slack::Event) {
+		if cfg!(debug_assertions) {
+			println!("Got event: {:?}", event);
+		}
 		match event {
 			slack::Event::Message(message) => {
 				if let slack::Message::Standard(ms) = *message {
@@ -442,7 +445,7 @@ impl slack::EventHandler for Queue<'_> {
 
 	fn on_connect(&mut self, cli: &RtmClient) {
 		println!("{}", INSPIRATIONAL_QUOTE);
-		let botspam_chan_id = cli
+		let chan_id = cli
 			.start_response()
 			.channels
 			.as_ref()
@@ -457,7 +460,7 @@ impl slack::EventHandler for Queue<'_> {
 			.and_then(|chan| chan.id.as_ref())
 			.expect("channel botspam not found")
 		;
-		let _ = cli.sender().send_message(&botspam_chan_id, INSPIRATIONAL_QUOTE);
+		let _ = cli.sender().send_message(&chan_id, INSPIRATIONAL_QUOTE);
 	}
 }
 
