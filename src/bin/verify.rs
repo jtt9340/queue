@@ -7,7 +7,7 @@
 // use std::net::SocketAddr;
 use std::{io, net::Ipv4Addr};
 
-use actix_web::{App, HttpResponse, HttpServer, Responder, web};
+use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 use serde::Deserialize;
 
 /// The IP address we are connecting to
@@ -30,10 +30,7 @@ async fn main() -> io::Result<()> {
     // but right now it is localhost:3152
     let socket_addr = (Ipv4Addr::LOCALHOST, PORT);
     // Let's set up a web server!
-    HttpServer::new(|| {
-        App::new()
-            .route("/slack/events", web::post().to(post_handler))
-    })
+    HttpServer::new(|| App::new().route("/slack/events", web::post().to(post_handler)))
         .bind(socket_addr)?
         .run()
         .await
