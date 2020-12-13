@@ -23,25 +23,20 @@ pub const INSPIRATIONAL_QUOTE: &str =
 const CHANNEL: &str = "3d-printer-queue";
 
 /// A help message to display when the `help` command is invoked
-const USAGE: &str = "*NAME*\n\
-\tQueue \u{2014} a Slack bot to keep track of who is using a 3D printer\n\n\
-*SYNOPSIS*\n\
-\t@Queue command\n\n\
-*DESCRIPTION*\n\
-\tCurrently, CSH uses a sticky note to keep track of who is waiting in line to use a 3D printer. This \
-app replaces the sticky note. You interact with Queue by @mentioning it, followed by a command. \
-Here are the current commands Queue recognizes:\n\
-* *add*: Add yourself to the queue. You can add yourself multiples times, in case there are multiple \
+const USAGE: &str = "*Queue* is a :slack: bot that keeps track of who is waiting in line to use the \
+3D printers. You interact with it by @mentioning it and then typing a command (e.g. `@Queue help`).\
+Here are the different commands *Queue* currently recognizes:\n\n\
+• *add*: Add yourself to the queue. You can add yourself multiples times, in case there are multiple \
 things you want to 3D print. However, you cannot have two back-to-back instances of yourself in the \
 queue so that you let others get a chance. However, if the queue is relatively empty (and by relatively \
 empty I mean less than 3 people in line), then you _can_ have back-to-back instances of yourself, since \
 not as many people are being negatively affected by having back-to-back instances of yourself in the queue \
-as they would be if there more than 3 people in line.\n\
-* *done*: Leave the queue. If there are multiple instances of you in the queue, the _first_ instance \
+as they would be if there were more than 3 people in line.\n\
+• *done*: Leave the queue. If there are multiple instances of you in the queue, the _first_ instance \
 (i.e. the one closest to the front) is removed. If you were in 0th place when you were removed, the \
 person is 1st place is notified of this change.\n\
-* *show*: See who is in the queue and in what place.\n\
-* *help*: Display this message.";
+• *show*: See who is in the queue and in what place.\n\
+• *help*: Display this message.";
 
 /// Given the body of a post to Slack, determine someone mentioned the Queue app
 fn is_app_mention(text: &str) -> bool {
@@ -475,7 +470,7 @@ impl fmt::Display for Queue<'_> {
     }
 }
 
-impl<'a> Deref for Queue<'a> {
+impl Deref for Queue<'_> {
     type Target = VecDeque<UserID>;
 
     fn deref(&self) -> &Self::Target {
