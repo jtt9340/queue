@@ -5,9 +5,17 @@
 # These are backup files created by rustfmt
 **/*.rs.bk
 
+# Created by IntelliJ IDEA
 .idea
+
+# Used by Git (as is clear by the name)
 .git.*
+
+# macOS cruft
 .DS_Store
+
+# Files containing API tokens
+token_*.txt
 
 # Test output files that aren't necessary to be tracked
 queue_state*.txt
