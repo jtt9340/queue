@@ -50,6 +50,9 @@ pub struct Queue<'a> {
     queue: VecDeque<UserID>,
     /// All the possible members of a Slack workspace that can join a queue
     uid_username_mapping: &'a SlackMap,
+    /// All the different channels in the workspace Queue is installed in, mapping channel names to
+    /// channel IDs
+    chan_name_id_mapping: BTreeMap<String, String>,
     /// The file that `self` will write to to preserve its state (may be a database connection in the future)
     db_conn: BufWriter<File>,
 }
@@ -97,6 +100,7 @@ impl<'a> Queue<'a> {
         Self {
             queue: VecDeque::new(),
             uid_username_mapping: uids_to_users,
+            chan_name_id_mapping: BTreeMap::new(),
             db_conn: BufWriter::new(
                 File::create("queue_state.txt")
                     .expect("Could not create a backup file for the queue"),
@@ -170,6 +174,7 @@ impl<'a> Queue<'a> {
         let mut queue = Self {
             queue: VecDeque::with_capacity(people.len()),
             uid_username_mapping: uids_to_users,
+            chan_name_id_mapping: BTreeMap::new(),
             db_conn: BufWriter::new(backup_file),
         };
 
@@ -403,16 +408,41 @@ impl slack::EventHandler for Queue<'_> {
         match event {
             slack::Event::Message(message) => {
                 if let slack::Message::Standard(ms) = *message {
-                    // The content of the message
-                    let text = ms.text.unwrap_or_default();
-                    if is_app_mention(&*text) {
-                        // Who posted the message
-                        let user = ms.user.expect("User does not exist");
-                        // What to send back to Slack
-                        let response = self.determine_response(UserID(user), text.as_str());
-                        // The channel the message was posted in
-                        let chan = ms.channel.expect("Channel does not exist");
-                        // Send 'em back!
+                    // The channel the message was posted in
+                    let chan = ms.channel.expect("Channel does not exist");
+                    /*
+                        Unfortunately, this Slack bot uses the (deprecated) Slack "real time messaging" (RTM)
+                        API because the slack crate only works with that API (not that I need the slack crate
+                        but the only other option is using Rust's advanced, concurrency-first HTTP libraries
+                        to build my own web API for this Slack bot, and I found working with the slack crate
+                        easier, even if it means using a deprecated API.
+
+                        I can see why Slack is encouraging you to use the new API ("granular scopes"). As the
+                        name suggests, that API allows you to be a lot more granular with the permissions you
+                        give the bot. I suspect that API allows you to only run the bot in certain channels,
+                        unlike the RTM API where the bot receives any event that happens in any channel where it
+                        has been "invited" to. So, to simulate some granularity, I am adding a check to see if
+                        the bot should respond, or if t was invoked in a channel it should not be in (see the
+                        CHANNEL variable).
+                    */
+                    if Some(&chan) == self.chan_name_id_mapping.get(CHANNEL) {
+                        // The content of the message
+                        let text = ms.text.unwrap_or_default();
+                        if is_app_mention(&*text) {
+                            // Who posted the message
+                            let user = ms.user.expect("User does not exist");
+                            // What to send back to Slack
+                            let response = self.determine_response(UserID(user), text.as_str());
+                            // Send 'em back!
+                            let _ = cli.sender().send_message(&*chan, &*response);
+                        }
+                    } else {
+                        let response = match self.chan_name_id_mapping.get(CHANNEL) {
+                            Some(chan_id) => {
+                                format!("Try invoking that same command in <#{}>!", chan_id)
+                            }
+                            None => format!("Try invoking that same command in #{}!", CHANNEL),
+                        };
                         let _ = cli.sender().send_message(&*chan, &*response);
                     }
                 }
@@ -427,19 +457,26 @@ impl slack::EventHandler for Queue<'_> {
 
     fn on_connect(&mut self, cli: &RtmClient) {
         println!("{}", INSPIRATIONAL_QUOTE);
-        let chan_id = cli
-            .start_response()
-            .channels
-            .as_ref()
-            .and_then(|chans| {
-                chans.iter().find(|chan| match chan.name {
-                    None => false,
-                    Some(ref name) => name == CHANNEL,
-                })
-            })
-            .and_then(|chan| chan.id.as_ref())
-            .expect("channel botspam not found");
-        let _ = cli.sender().send_message(&chan_id, INSPIRATIONAL_QUOTE);
+        match cli.start_response().channels.as_ref() {
+            Some(channels) => {
+                for channel in channels {
+                    if let (Some(name), Some(id)) = (channel.name.as_ref(), channel.id.as_ref()) {
+                        assert_eq!(
+                            self.chan_name_id_mapping.insert(name.clone(), id.clone()),
+                            None
+                        );
+                    }
+                }
+            }
+            None => panic!("Could not find any channels in this Slack workspace."),
+        };
+
+        let chan_id = self
+            .chan_name_id_mapping
+            .get(CHANNEL)
+            .expect(&*format!("Channel {} not found", CHANNEL));
+
+        let _ = cli.sender().send_message(chan_id, INSPIRATIONAL_QUOTE);
     }
 }
 
@@ -499,6 +536,7 @@ mod tests {
         let queue_b = Queue {
             queue: VecDeque::new(),
             uid_username_mapping: &hash_map,
+            chan_name_id_mapping: BTreeMap::new(),
             db_conn: BufWriter::new(test_file),
         };
 
