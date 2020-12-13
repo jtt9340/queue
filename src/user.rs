@@ -53,14 +53,14 @@ pub fn create_uid_username_mapping(auth_token: &str) -> reqwest::Result<SlackMap
     // I'M GONNA GET THE REAL NAMES FINALLY!!!!!1
     let client = reqwest::blocking::Client::new();
     let users = client
-		.get("https://slack.com/api/users.list") // reqwest::RequestBuilder
-		.bearer_auth(auth_token) // reqwest::RequestBuilder
-		.send()? // reqwest::blocking::response::Response
-		.json::<UsersList>()? // UsersList
-		;
+        .get("https://slack.com/api/users.list") // reqwest::RequestBuilder
+        .bearer_auth(auth_token) // reqwest::RequestBuilder
+        .send()? // reqwest::blocking::response::Response
+        .json::<UsersList>()? // UsersList
+        ;
 
-    // Yikes there are about 772 users
-    let mut uid_username_mapping = HashMap::with_capacity(780);
+    // Yikes there are about 857 users
+    let mut uid_username_mapping = HashMap::with_capacity(860);
 
     /* Let's just see what a randomly chosen user looks like (and by randomly chosen I mean I
     randomly picked the number 70; I'm not bringing in another dependency (specifically the rand
