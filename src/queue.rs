@@ -445,28 +445,31 @@ impl slack::EventHandler for Queue<'_> {
 
 impl fmt::Display for Queue<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Here are the people currently in line:\n{}",
-            self.queue
-                .iter()
-                .enumerate()
-                .map(|idx_user_pair| {
-                    let (idx, u) = idx_user_pair;
-                    let (maybe_real_name, maybe_username) = self
-                        .get_username_by_id(u)
-                        .expect(format!("For some reason user {} did not have an ID", u).as_str());
-                    let u = &u.to_string();
-                    let real_name = maybe_real_name.as_ref().unwrap_or(u);
-                    match maybe_username {
-                        Some(uname) if !uname.is_empty() => {
-                            format!("{}. {} ({})\n", idx, real_name, uname)
+        if self.len() == 0 {
+            f.write_str("Nobody is in line!")
+        } else {
+            write!(
+                f,
+                "Here are the people currently in line:\n{}",
+                self.queue
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, u)| {
+                        let (maybe_real_name, maybe_username) = self.get_username_by_id(u).expect(
+                            format!("For some reason user {} did not have an ID", u).as_str(),
+                        );
+                        let u = &u.to_string();
+                        let real_name = maybe_real_name.as_ref().unwrap_or(u);
+                        match maybe_username {
+                            Some(uname) if !uname.is_empty() => {
+                                format!("{}. {} ({})\n", idx, real_name, uname)
+                            }
+                            _ => format!("{}. {}\n", idx, real_name),
                         }
-                        _ => format!("{}. {}\n", idx, real_name),
-                    }
-                })
-                .fold(String::default(), |acc, line| acc.to_owned() + &line)
-        )
+                    })
+                    .fold(String::default(), |acc, line| acc.to_owned() + &line)
+            )
+        }
     }
 }
 
