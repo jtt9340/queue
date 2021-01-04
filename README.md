@@ -5,8 +5,6 @@ A Slack bot that keeps track of people waiting in line for an event and notifies
 [Computer Science House](https://csh.rit.edu) (CSH) is an organization at the [Rochester Institute of Technology](https://www.rit.edu) (RIT) that has several 3D printers. Members of CSH currently use sticky notes to keep track of whose turn it is to use a particular 3D printer. This Slack app serves to automate the waiting process and ditch the sticky notes.
 
 ## Usage
-As this app is still in development, this is subject to change. However, here is how you use Queue *for now*.
-
 All Queue commands are invoked by mentioning Queue (`@Queue`) in a message you post in a channel where the Queue app is installed. You immediately follow the `@Queue` mention with __one__ of the following words (commands do not yet take arguments, although it doesn't make sense for any of the following commands to currently take arguments. Queue may accept certain commands in the future that take required and/or optional arguments):
 * __add__ - `@Queue add`
 	* Add yourself to the Queue. New users are quick to notice that they can add themselves to the queue multiple times.
@@ -22,7 +20,7 @@ All Queue commands are invoked by mentioning Queue (`@Queue`) in a message you p
 * __show__ - `@Queue show`
 	* See who is currently in the Queue and what position they are in.
 * __help__ - `@Queue help`
-	* Display a man-page style help message in case you forget what commands you can do.
+	* Display a help message in case you forget what commands you can issue.
 
 ## Sample Run
 
@@ -31,3 +29,7 @@ All Queue commands are invoked by mentioning Queue (`@Queue`) in a message you p
 ## ideas.txt
 This repo contains a file titled `ideas.txt` containing ways that this app can be improved. For instance, there is
 (currently) no time limit as to how long one can stay at the front of the queue. This is planned to change.
+
+If you would like to run this Slack bot in your own Slack workspace or work on improving this Slack bot in a test
+Slack workspace, check out the [setup-instructions.md](./setup-instructions.md) file for instructions on how to set
+up a Slack bot with the Slack API.
