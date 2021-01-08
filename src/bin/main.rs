@@ -18,6 +18,7 @@ fn usage(program: &str, opts: Options) {
 
 /// Entry point for the Slack bot.
 fn main() -> Result<(), slack::error::Error> {
+    openssl_probe::init_ssl_cert_env_vars();
     let mut args = env::args();
     let program = args
         .next()

@@ -1,0 +1,26 @@
+# This .dockerignore has been adapted from this repo's .gitignore
+
+# will have compiled files and executables
+target
+
+# Created by IntelliJ IDEA
+.idea
+
+Dockerfile
+
+# macOS cruft
+.DS_Store
+
+# Unneeded Git files
+.git.*
+
+# Unnecessary files containing API tokens
+token_*.txt
+
+# Test output files that don't need to be included in the image
+queue_state*.txt
+test.txt
+users.json
+
+# Demo videos
+*.mov
