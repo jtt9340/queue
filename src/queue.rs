@@ -19,9 +19,6 @@ pub const QUEUE_UID: &str = "<@U01A844Q2US>";
 pub const INSPIRATIONAL_QUOTE: &str =
 	"_Waiting in line is a great opportunity to meet people, daydream, or play._\n\t\u{2014}Patch Adams";
 
-/// Which Slack channel Queue is running in.
-const CHANNEL: &str = "3d-printer-queue";
-
 /// A help message to display when the `help` command is invoked
 const USAGE: &str = "*Queue* is a :slack: bot that keeps track of who is waiting in line to use the \
 3D printers. You interact with it by @mentioning it and then typing a command (e.g. `@Queue help`).\
@@ -50,6 +47,8 @@ pub struct Queue<'a> {
     queue: VecDeque<UserID>,
     /// All the possible members of a Slack workspace that can join a queue
     uid_username_mapping: &'a SlackMap,
+    /// The name of the Slack channel that the Queue bot is running in
+    channel: String,
     /// All the different channels in the workspace Queue is installed in, mapping channel names to
     /// channel IDs
     chan_name_id_mapping: BTreeMap<String, String>,
@@ -86,8 +85,9 @@ pub enum RemoveResult {
 }
 
 impl<'a> Queue<'a> {
-    /// Create an empty queue with no previous state. `uids_to_users` is a `std::collections::HashMap`
-    /// whose keys are Slack IDs and whose values are usernames associated with the given Slack ID.
+    /// Create an empty queue that runs in a Slack channel named `channel` with no previous state.
+    /// `uids_to_users` is a `std::collections::HashMap` whose keys are Slack IDs and whose values
+    /// are usernames associated with the given Slack ID.
     ///
     /// This function will also create an empty file that, over the course of the lifetime of this
     /// queue, will be written to representing the users in the queue so that, if the app were to
@@ -96,10 +96,11 @@ impl<'a> Queue<'a> {
     ///
     /// # Panics
     /// This function will panic if the aforementioned `queue_state.txt` fails to be created.
-    pub fn new(uids_to_users: &'a SlackMap) -> Self {
+    pub fn new(channel: &str, uids_to_users: &'a SlackMap) -> Self {
         Self {
             queue: VecDeque::new(),
             uid_username_mapping: uids_to_users,
+            channel: String::from(channel),
             chan_name_id_mapping: BTreeMap::new(),
             db_conn: BufWriter::new(
                 File::create("queue_state.txt")
@@ -108,9 +109,10 @@ impl<'a> Queue<'a> {
         }
     }
 
-    /// Create a queue whose state is described by the file located at `path`, effectively restoring
-    /// it from a previous state. The file should be one that was previously created by running this
-    /// app. Or, if the file does not exist, it will be created.
+    /// Create a queue that runs in a Slack channel named `channel` whose state is described by the
+    /// file located at `path`, effectively restoring it from a previous state. The file should be
+    /// one that was previously created by running this app. Or, if the file does not exist,
+    /// it will be created.
     ///
     /// # Examples
     /// Say the input file contains the following content.
@@ -133,7 +135,7 @@ impl<'a> Queue<'a> {
     /// * If the file at `path` fails to be read for any reason.
     /// * If the file is _not_ in the valid format expected by queue: each line is a positive integer,
     /// followed by a tab, followed by a Slack user ID.
-    pub fn from_file<P: AsRef<Path>>(uids_to_users: &'a SlackMap, path: P) -> Self {
+    pub fn from_file<P: AsRef<Path>>(channel: &str, uids_to_users: &'a SlackMap, path: P) -> Self {
         use std::io::Read; // needed for the invocation of read_to_string()
 
         let mut people = BTreeMap::new();
@@ -174,6 +176,7 @@ impl<'a> Queue<'a> {
         let mut queue = Self {
             queue: VecDeque::with_capacity(people.len()),
             uid_username_mapping: uids_to_users,
+            channel: String::from(channel),
             chan_name_id_mapping: BTreeMap::new(),
             db_conn: BufWriter::new(backup_file),
         };
@@ -425,7 +428,7 @@ impl slack::EventHandler for Queue<'_> {
                         the bot should respond, or if t was invoked in a channel it should not be in (see the
                         CHANNEL variable).
                     */
-                    if Some(&chan) == self.chan_name_id_mapping.get(CHANNEL) {
+                    if Some(&chan) == self.chan_name_id_mapping.get(&*self.channel) {
                         // The content of the message
                         let text = ms.text.unwrap_or_default();
                         if is_app_mention(&*text) {
@@ -437,11 +440,11 @@ impl slack::EventHandler for Queue<'_> {
                             let _ = cli.sender().send_message(&*chan, &*response);
                         }
                     } else {
-                        let response = match self.chan_name_id_mapping.get(CHANNEL) {
+                        let response = match self.chan_name_id_mapping.get(&*self.channel) {
                             Some(chan_id) => {
                                 format!("Try invoking that same command in <#{}>!", chan_id)
                             }
-                            None => format!("Try invoking that same command in #{}!", CHANNEL),
+                            None => format!("Try invoking that same command in #{}!", self.channel),
                         };
                         let _ = cli.sender().send_message(&*chan, &*response);
                     }
@@ -473,8 +476,8 @@ impl slack::EventHandler for Queue<'_> {
 
         let chan_id = self
             .chan_name_id_mapping
-            .get(CHANNEL)
-            .expect(&*format!("Channel {} not found", CHANNEL));
+            .get(&*self.channel)
+            .expect(&*format!("Channel {} not found", self.channel));
 
         let _ = cli.sender().send_message(chan_id, INSPIRATIONAL_QUOTE);
     }
@@ -522,6 +525,8 @@ impl Deref for Queue<'_> {
 mod tests {
     use std::collections::HashMap;
 
+    use crate::CHANNEL;
+
     use super::*;
 
     #[test]
@@ -532,10 +537,11 @@ mod tests {
             Err(e) => return Err(format!("{}", e)),
         };
 
-        let queue_a = Queue::new(&hash_map);
+        let queue_a = Queue::new(CHANNEL, &hash_map);
         let queue_b = Queue {
             queue: VecDeque::new(),
             uid_username_mapping: &hash_map,
+            channel: String::from(CHANNEL),
             chan_name_id_mapping: BTreeMap::new(),
             db_conn: BufWriter::new(test_file),
         };
@@ -579,7 +585,7 @@ mod tests {
     #[test]
     fn add_users() {
         let hash_map = HashMap::new();
-        let mut queue = Queue::new(&hash_map);
+        let mut queue = Queue::new(CHANNEL, &hash_map);
 
         add_users_helper(&mut queue, UserID::new("UA8RXUPSP"));
         add_users_helper(&mut queue, UserID::new("UNB2LMZRP"));
@@ -601,7 +607,7 @@ mod tests {
     #[test]
     fn add_duplicate_users_to_nonempty_queue() {
         let hash_map = HashMap::new();
-        let mut queue = Queue::new(&hash_map);
+        let mut queue = Queue::new(CHANNEL, &hash_map);
         let test_user = UserID::new("UA8RXUPSP");
 
         add_users_helper(&mut queue, test_user.clone());
@@ -635,7 +641,7 @@ mod tests {
     #[test]
     fn add_duplicate_users_to_empty_queue() {
         let hash_map = HashMap::new();
-        let mut queue = Queue::new(&hash_map);
+        let mut queue = Queue::new(CHANNEL, &hash_map);
 
         // This should work, because the queue is empty so UA8RXUPSP can add themselves up to 3 times
         for _ in 0..3 {
@@ -660,7 +666,7 @@ mod tests {
     #[test]
     fn remove_front_users() {
         let hash_map = HashMap::new();
-        let mut queue = Queue::new(&hash_map);
+        let mut queue = Queue::new(CHANNEL, &hash_map);
 
         add_users_helper(&mut queue, UserID::new("UA8RXUPSP"));
         add_users_helper(&mut queue, UserID::new("UNB2LMZRP"));
@@ -692,7 +698,7 @@ mod tests {
     #[test]
     fn peek_front_users() {
         let hash_map = HashMap::new();
-        let mut queue = Queue::new(&hash_map);
+        let mut queue = Queue::new(CHANNEL, &hash_map);
 
         add_users_helper(&mut queue, UserID::new("UA8RXUPSP"));
         add_users_helper(&mut queue, UserID::new("UNB2LMZRP"));
@@ -719,7 +725,7 @@ mod tests {
     #[test]
     fn remove_arbitrary_users() {
         let hash_map = HashMap::new();
-        let mut queue = Queue::new(&hash_map);
+        let mut queue = Queue::new(CHANNEL, &hash_map);
 
         add_users_helper(&mut queue, UserID::new("UA8RXUPSP"));
         add_users_helper(&mut queue, UserID::new("UNB2LMZRP"));
@@ -744,7 +750,7 @@ mod tests {
     #[test]
     fn remove_non_existent_users() {
         let hash_map = HashMap::new();
-        let mut queue = Queue::new(&hash_map);
+        let mut queue = Queue::new(CHANNEL, &hash_map);
 
         match queue.remove_user(UserID::new("UNB2LMZRP")) {
             (_, NonExistentUser) => (), // This is the behavior that is expected

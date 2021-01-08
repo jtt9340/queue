@@ -2,8 +2,7 @@ use std::{env, process};
 
 use getopts::Options;
 
-pub use print_queue::queue;
-pub use print_queue::user;
+pub use print_queue::{queue, user, CHANNEL};
 use user::create_uid_username_mapping;
 
 /// Display usage information. Used for handling the "-h" or "--help" flags if passed, or if the Slack
@@ -31,6 +30,12 @@ fn main() -> Result<(), slack::error::Error> {
         "file",
         "name of the backup file to use; will be created if empty",
         "FILE",
+    );
+    opts.optopt(
+        "c",
+        "channel",
+        "The name of the channel to run the bot in",
+        "CHANNEL-NAME",
     );
     opts.optflag("h", "", "show a one-line usage summary");
     opts.optflag("", "help", "display this help message and exit");
@@ -76,9 +81,11 @@ fn main() -> Result<(), slack::error::Error> {
         println!("Number of members: {:?}", users.len());
     }
 
+    let channel = matches.opt_str("channel").unwrap_or(String::from(CHANNEL));
+
     let mut queue = match matches.opt_str("f") {
-        Some(file) => queue::Queue::from_file(&users, file),
-        None => queue::Queue::new(&users),
+        Some(file) => queue::Queue::from_file(&*channel, &users, file),
+        None => queue::Queue::new(&*channel, &users),
     };
     slack::RtmClient::login_and_run(&api_key, &mut queue)
 }
