@@ -12,6 +12,9 @@ have it track multiple queues, one for each event, at a time.
 
 - Allow admins to rearrange people in the queue.
 
-- Multiple instances of the same person should be allowed in the queue
-    - If the queue is empty, you can have up to 3 back-to-back instances of yourself
-    - Otherwise, you cannot add yourself to the queue unless the person in front of you is not you
+- Break the Queue struct up: right now it holds which people in line, and it also
+holds information related to the Slack API, e.g. mapping Slack channel IDs to channel
+names, etc. This could probably be broken up into two different structs: one that holds
+the VecDeque structure and knows nothing about the Slack API, and one that just forwards
+all "add", "remove", etc. commands to the Queue struct and just handles interacting with
+the Slack API.
