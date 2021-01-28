@@ -168,7 +168,7 @@ impl<'a> Queue<'a> {
                 "Invalid file format: each line in the file must start with a parse-\
 				able positive integer",
             );
-            if let Some(_) = people.insert(pos, uid) {
+            if people.insert(pos, uid).is_some() {
                 panic!("Invalid file format: only one person per position (index) in line");
             }
         }
@@ -207,7 +207,7 @@ impl<'a> Queue<'a> {
         // returning early if any line fails.
         // Otherwise, flush the BufWriter to the file and hope it works :P
         for (pos, uid) in self.queue.iter().enumerate() {
-            write!(output, "{}\t{}\n", pos, uid)?;
+            writeln!(output, "{}\t{}", pos, uid)?;
         }
 
         // Get the number of bytes in the file currently
@@ -408,6 +408,7 @@ impl slack::EventHandler for Queue<'_> {
         if cfg!(debug_assertions) {
             println!("Got event: {:?}", event);
         }
+        #[allow(clippy::single_match)]
         match event {
             slack::Event::Message(message) => {
                 if let slack::Message::Standard(ms) = *message {
@@ -495,9 +496,10 @@ impl fmt::Display for Queue<'_> {
                     .iter()
                     .enumerate()
                     .map(|(idx, u)| {
-                        let (maybe_real_name, maybe_username) = self.get_username_by_id(u).expect(
-                            format!("For some reason user {} did not have an ID", u).as_str(),
-                        );
+                        let (maybe_real_name, maybe_username) =
+                            self.get_username_by_id(u).unwrap_or_else(|| {
+                                panic!("For some reason user {} did not have an ID", u)
+                            });
                         let u = &u.to_string();
                         let real_name = maybe_real_name.as_ref().unwrap_or(u);
                         match maybe_username {
@@ -507,7 +509,7 @@ impl fmt::Display for Queue<'_> {
                             _ => format!("{}. {}\n", idx, real_name),
                         }
                     })
-                    .fold(String::default(), |acc, line| acc.to_owned() + &line)
+                    .fold(String::default(), |acc, line| acc + &line)
             )
         }
     }

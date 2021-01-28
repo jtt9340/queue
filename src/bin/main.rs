@@ -82,7 +82,9 @@ fn main() -> Result<(), slack::error::Error> {
         println!("Number of members: {:?}", users.len());
     }
 
-    let channel = matches.opt_str("channel").unwrap_or(String::from(CHANNEL));
+    let channel = matches
+        .opt_str("channel")
+        .unwrap_or_else(|| String::from(CHANNEL));
 
     let mut queue = match matches.opt_str("f") {
         Some(file) => queue::Queue::from_file(&*channel, &users, file),
