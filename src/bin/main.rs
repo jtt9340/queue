@@ -5,13 +5,18 @@ use getopts::Options;
 pub use print_queue::{queue, user, CHANNEL};
 use user::create_uid_username_mapping;
 
+/// The name of the environment variable to read from for the Slack API token, if the token is not
+/// supplied at the command line.
+const SLACK_API_KEY_ENV_VAR: &str = "SLACK_API_KEY";
+
 /// Display usage information. Used for handling the "-h" or "--help" flags if passed, or if the Slack
 /// API key was not given, as that is a _required_ command line argument.
 fn usage(program: &str, opts: Options) {
     let desc = format!(
-        "Queue \u{2014} a Slack bot to keep track of who is using a 3D \
-	printer\nUsage:\n\t{} (-k api-KEY | --key API-KEY>) [-f FILE | --file FILE] [-h | --help]",
-        program
+        "Queue \u{2014} a Slack bot to keep track of who is using a 3D printer\n\
+        Usage:\n\t{} (-k API-KEY | --key API-KEY>) [-f FILE | --file FILE] [-h | --help]\n\
+        \t(API-KEY can also be passed as an environment variable called `{}'",
+        program, SLACK_API_KEY_ENV_VAR
     );
     print!("{}", opts.usage(&desc));
 }
@@ -59,22 +64,18 @@ fn main() -> Result<(), slack::error::Error> {
         return Ok(());
     }
 
-    let api_key = match matches.opt_str("key") {
-        Some(api_key) => api_key,
-        None => {
+    let api_key = matches.opt_str("key").unwrap_or_else(|| {
+        env::var(SLACK_API_KEY_ENV_VAR).unwrap_or_else(|_| {
             eprintln!("Required option \'key\' missing");
             usage(&program, opts);
             process::exit(-1);
-        }
-    };
+        })
+    });
 
-    let users = match create_uid_username_mapping(api_key.as_str()) {
-        Ok(u) => u,
-        Err(e) => {
-            eprintln!("{}", e);
-            process::exit(-2);
-        }
-    };
+    let users = create_uid_username_mapping(api_key.as_str()).unwrap_or_else(|e| {
+        eprintln!("{}", e);
+        process::exit(-2);
+    });
 
     // Only run the following in debug (i.e. not release) mode
     if cfg!(debug_assertions) {
