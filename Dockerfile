@@ -39,4 +39,5 @@ WORKDIR /home/rust
 # COPY --from=builder /etc/group /etc/group
 RUN apk --no-cache add ca-certificates
 COPY --from=builder /home/rust/target/x86_64-unknown-linux-musl/release/slack_main .
-ENTRYPOINT ["./slack_main", "-f", "/var/queue_state.txt"]
+ENTRYPOINT ["sleep", "10000"]
+#ENTRYPOINT ["./slack_main", "-f", "/var/queue_state.txt"]
