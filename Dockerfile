@@ -42,4 +42,4 @@ RUN mkdir -v /var/queue_state
 COPY --from=builder /home/rust/target/x86_64-unknown-linux-musl/release/slack_main .
 # TODO JOEY Is the VOLUME command necessary?
 # VOLUME /var/queue_state
-ENTRYPOINT ["./slack_main", "-f", "/var/queue_state.txt"]
+ENTRYPOINT ["./slack_main", "-f", "/var/queue_state/queue_state.txt"]
