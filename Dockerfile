@@ -38,6 +38,8 @@ WORKDIR /home/rust
 # COPY --from=builder /etc/passwd /etc/passwd
 # COPY --from=builder /etc/group /etc/group
 RUN apk --no-cache add ca-certificates
+RUN mkdir -v /var/queue_state
 COPY --from=builder /home/rust/target/x86_64-unknown-linux-musl/release/slack_main .
-ENTRYPOINT ["sleep", "10000"]
-#ENTRYPOINT ["./slack_main", "-f", "/var/queue_state.txt"]
+# TODO JOEY Is the VOLUME command necessary?
+# VOLUME /var/queue_state
+ENTRYPOINT ["./slack_main", "-f", "/var/queue_state.txt"]
